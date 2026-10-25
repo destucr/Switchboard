@@ -394,6 +394,21 @@ if CommandLine.arguments.contains("--selftest") {
         check("a server that just stopped is shown as stopped", s.groups.first { $0.name == "api" }?.stopped.map(\.port) == [8000])
     }
 
+    // Stop takes the whole family: a worker that shares the port goes too.
+    do {
+        let parent = Process()
+        parent.executableURL = URL(fileURLWithPath: "/bin/sh"); parent.arguments = ["-c", "sleep 30 & sleep 30 & wait"]
+        try? parent.run()
+        usleep(400_000)
+        let e = PortEntry(id: "x", port: 1, host: "127.0.0.1", lanExposed: false, kind: .dev, title: "x", pid: parent.processIdentifier, command: "", projectName: nil,
+                          projectPath: nil, group: "x", uptime: nil, container: nil, web: .none,
+                          restart: RestartSpec(exec: "/bin/sh", argv: [], env: [:], cwd: NSTemporaryDirectory(), rootPid: parent.processIdentifier))
+        let fam = Actions.family(of: e)
+        check("stop includes the processes it started", fam.contains(parent.processIdentifier) && fam.count == 3)
+        check("stop never includes this app", !fam.contains(getpid()))
+        for p in fam { kill(p, SIGKILL) }
+    }
+
     // CPU and memory.
     check("cpu share over two seconds", abs(Usage.cpuPercent(from: 1_000_000_000, to: 2_000_000_000, seconds: 2) - 50) < 0.001)
     check("cpu never goes negative", Usage.cpuPercent(from: 5, to: 1, seconds: 3) == 0 && Usage.cpuPercent(from: 1, to: 9, seconds: 0) == 0)

@@ -16,8 +16,20 @@ enum Actions {
             if r.status != 0 { throw ActionError.message("docker stop failed") }
             return
         }
-        guard let pid = e.pid else { return }
-        try await terminate(pids: unique([e.restart?.rootPid, pid]))
+        guard e.pid != nil else { return }
+        try await terminate(pids: family(of: e))
+    }
+
+    /// The server and everything that keeps its port open: the processes it started, and workers that share its socket.
+    /// A worker whose parent already died is found by the port, but only if it runs from the same folder.
+    static func family(of e: PortEntry) -> [Int32] {
+        let roots = unique([e.restart?.rootPid, e.pid])
+        var all = roots
+        for r in roots { all += Proc.descendants(of: r) }
+        let cwd = e.restart?.cwd ?? e.pid.flatMap { Proc.cwd($0) }
+        for p in Scanner.listeners(on: e.port) where !all.contains(p) && cwd != nil && Proc.cwd(p) == cwd { all.append(p) }
+        let me = getpid()
+        return unique(all.map { Optional($0) }).filter { $0 > 1 && $0 != me }
     }
 
     private static func unique(_ pids: [Int32?]) -> [Int32] {
@@ -50,8 +62,8 @@ enum Actions {
             if r.status != 0 { throw ActionError.message("docker restart failed") }
             return
         }
-        guard let spec = e.restart, let pid = e.pid else { throw ActionError.message("Nothing to restart") }
-        try await terminate(pids: unique([spec.rootPid, pid]))
+        guard let spec = e.restart, e.pid != nil else { throw ActionError.message("Nothing to restart") }
+        try await terminate(pids: family(of: e))
 
         let log = try openLog(e.group, port ?? e.port, label: port == nil ? "restarted" : "moved to :\(port!)")
 

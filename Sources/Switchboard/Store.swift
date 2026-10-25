@@ -597,7 +597,16 @@ final class Store: ObservableObject {
             expectedStops[e.key] = Date()
             let again = known[e.key].flatMap { $0.canStart ? $0 : nil }
             perform(e.key, label: "Stopping…", success: "Stopped \(displayName(e)) :\(e.port)",
-                    undo: again.map { k in UndoAction(label: "Undo") { self.start(k) } }) { try await Actions.kill(e) }
+                    undo: again.map { k in UndoAction(label: "Undo") { self.start(k) } }) {
+                try await Actions.kill(e)
+                // Say so if the port is still open, instead of claiming it stopped.
+                guard e.container == nil else { return }
+                for _ in 0..<8 {
+                    if !(await Task.detached { Probe.isListening(e.port) }.value) { return }
+                    try? await Task.sleep(for: .milliseconds(150))
+                }
+                throw ActionError.message("Stopped it, but something is still listening on :\(e.port). It may restart itself.")
+            }
         }
     }
 

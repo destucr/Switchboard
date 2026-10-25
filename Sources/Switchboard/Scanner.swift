@@ -93,6 +93,12 @@ enum Scanner {
 
     // MARK: lsof
 
+    /// Every process listening on a port, including workers that inherited the socket.
+    static func listeners(on port: Int) -> [Int32] {
+        let r = runCapture("/usr/sbin/lsof", ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN", "-t"], timeout: 4)
+        return r.out.split(separator: "\n").compactMap { Int32($0) }
+    }
+
     private static func parseListeners() -> [Listener] {
         let r = runCapture("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"], timeout: 8)
         var out: [Listener] = []

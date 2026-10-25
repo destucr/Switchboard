@@ -31,6 +31,17 @@ enum Proc {
         return n > 0 ? Array(buf.prefix(Int(n))) : []
     }
 
+    /// Everything a process started, however deep.
+    static func descendants(of root: Int32, limit: Int = 200) -> [Int32] {
+        var queue = children(root), out: [Int32] = [], seen: Set<Int32> = [root]
+        while let pid = queue.popLast(), out.count < limit {
+            guard seen.insert(pid).inserted else { continue }
+            out.append(pid)
+            queue.append(contentsOf: children(pid))
+        }
+        return out
+    }
+
     private static let timebase: (numer: UInt64, denom: UInt64) = {
         var t = mach_timebase_info_data_t(); mach_timebase_info(&t)
         return (UInt64(t.numer), UInt64(max(t.denom, 1)))
