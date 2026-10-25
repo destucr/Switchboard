@@ -442,8 +442,7 @@ struct RowView: View {
                 } else if active {
                     secondaryActions
                 } else if let up = entry.uptime {
-                    Text("up \(up)").font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize()
-                        .tip("Running for \(up)")
+                    uptimeLabel(up)
                 }
                 mainButton
             }
@@ -471,6 +470,17 @@ struct RowView: View {
         .accessibilityAction(named: "Stop") { store.kill(entry) }
         .accessibilityAction(named: store.isPinned(entry.key) ? "Unpin" : "Pin") { store.togglePin(entry) }
         .contextMenu { ServerMenu(entry: entry) }
+    }
+
+    /// "up 5m · 120 MB", with the CPU share shown in orange only when the server is busy.
+    private func uptimeLabel(_ up: String) -> some View {
+        let u = store.usage[entry.key]
+        return HStack(spacing: 4) {
+            if let u, u.busy { Text(u.cpuText).foregroundStyle(Brand.orange) }
+            Text(u.map { "up \(up) · \($0.memoryText)" } ?? "up \(up)").foregroundStyle(.secondary)
+        }
+        .font(.caption).lineLimit(1).fixedSize()
+        .tip(u.map { "Running for \(up)\nCPU \(Int($0.cpu.rounded()))% of one core, memory \($0.memoryText)\nCounts the processes it started too" } ?? "Running for \(up)")
     }
 
     @ViewBuilder private var health: some View {

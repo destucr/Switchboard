@@ -4,6 +4,9 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Added
+- Each running server shows its memory next to how long it has been up. A server using half a core or more also shows its CPU in orange. Hover for the full numbers. They include the processes it started, and Docker containers are left out.
+
 ## [1.10.0] - 2026-10-23
 
 ### Added

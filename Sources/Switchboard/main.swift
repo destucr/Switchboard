@@ -7,7 +7,7 @@ if let first = CommandLine.arguments.dropFirst().first, CLI.commands.contains(fi
 
 if CommandLine.arguments.contains("--scan") {
     for e in Scanner.scan() {
-        print("\(e.port)\t\(e.kind.rawValue)\t\(e.title)\t[\(e.group)]\tpid=\(e.pid.map(String.init) ?? "-")\tup=\(e.uptime ?? "-")\tweb=\(e.web.rawValue)\tlan=\(e.lanExposed)\troot=\(e.restart.map { String($0.rootPid) } ?? "-")\t\(e.command.prefix(80))")
+        print("\(e.port)\t\(e.kind.rawValue)\t\(e.title)\t[\(e.group)]\tpid=\(e.pid.map(String.init) ?? "-")\tup=\(e.uptime ?? "-")\tweb=\(e.web.rawValue)\tlan=\(e.lanExposed)\troot=\(e.restart.map { String($0.rootPid) } ?? "-")\tmem=\((e.restart?.rootPid ?? e.pid).flatMap { Proc.usage(of: $0) }.map { Usage.memoryText($0.rss) } ?? "-")\t\(e.command.prefix(80))")
     }
     exit(0)
 }
@@ -314,6 +314,37 @@ if CommandLine.arguments.contains("--selftest") {
     let plain = PortEntry(id: "c", port: 3000, host: "127.0.0.1", lanExposed: false, kind: .dev, title: "x", pid: 1, command: "", projectName: "p", projectPath: "/p", group: "p", uptime: nil, container: nil, web: .page, restart: nil)
     check("copy as curl", plain.curl == "curl -i http://localhost:3000")
 
+    // CPU and memory.
+    check("cpu share over two seconds", abs(Usage.cpuPercent(from: 1_000_000_000, to: 2_000_000_000, seconds: 2) - 50) < 0.001)
+    check("cpu never goes negative", Usage.cpuPercent(from: 5, to: 1, seconds: 3) == 0 && Usage.cpuPercent(from: 1, to: 9, seconds: 0) == 0)
+    check("memory in MB", Usage.memoryText(120 * 1_048_576) == "120 MB")
+    check("memory in GB", Usage.memoryText(1_610_612_736) == "1.5 GB")
+    check("a busy server is flagged", Usage(cpu: 80, memory: 0).busy && !Usage(cpu: 4, memory: 0).busy)
+    do {
+        let me = Proc.usage(of: getpid())
+        check("usage of this process", (me?.rss ?? 0) > 0)
+        let kid = Process()
+        kid.executableURL = URL(fileURLWithPath: "/bin/sleep"); kid.arguments = ["3"]
+        try? kid.run()
+        check("children are found", Proc.children(getpid()).contains(kid.processIdentifier))
+        kid.terminate()
+        check("a missing process has no usage", Proc.usage(of: 999_999) == nil)
+        // The parent only waits; the child burns CPU. The parent's usage has to include the child.
+        let busy = Process()
+        busy.executableURL = URL(fileURLWithPath: "/bin/sh"); busy.arguments = ["-c", "while :; do :; done & wait"]
+        try? busy.run()
+        usleep(300_000)
+        if let a = Proc.usage(of: busy.processIdentifier) {
+            let t0 = Date(); usleep(800_000)
+            if let b = Proc.usage(of: busy.processIdentifier) {
+                let pct = Usage.cpuPercent(from: a.cpuNs, to: b.cpuNs, seconds: Date().timeIntervalSince(t0))
+                check("a busy child shows up in its parent's cpu", pct > 25)
+            } else { check("usage is read twice", false) }
+        } else { check("usage of the busy parent", false) }
+        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-P", String(busy.processIdentifier)])
+        busy.terminate()
+    }
+
     // Update check: numeric version order, and only real releases count.
     check("1.10.0 is newer than 1.9.0", Updates.isNewer("1.10.0", than: "1.9.0"))
     check("the same version is not newer", !Updates.isNewer("v1.7.0", than: "1.7.0"))
@@ -574,7 +605,9 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), CommandLine.arg
         let docs = KnownServer(key: "/Users/dev/dashboard:4100", port: 4100, title: "Docusaurus", group: "dashboard",
                                projectPath: "/Users/dev/dashboard", start: KnownStart(exec: "/usr/bin/true", argv: [], cwd: "/tmp"), containerID: nil, lastSeen: Date())
         let store = Store(sample: list, stopped: [stoppedServer, docs], names: ["/Users/dev/dashboard:3001": "Admin app"],
-                          pinned: [], stack: sampleStack, showMap: CommandLine.arguments.contains("map"))
+                          pinned: [], stack: sampleStack, showMap: CommandLine.arguments.contains("map"),
+                          usage: Dictionary(uniqueKeysWithValues: zip(list.map(\.key), [(3.0, 142), (91.0, 318), (1.0, 96), (6.0, 214), (0.0, 64), (2.0, 780), (0.0, 38), (4.0, 120)]
+                              .map { Usage(cpu: $0.0, memory: UInt64($0.1) * 1_048_576) })))
         if CommandLine.arguments.contains("logs") {
             let t = LogTail(source: .file("/Users/dev/billing-api/storage/logs/laravel.log"), title: "Laravel :8000", key: list[3].key)
             t.preload("""

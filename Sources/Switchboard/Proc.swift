@@ -23,6 +23,36 @@ enum Proc {
         return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size ? info : nil
     }
 
+    /// Direct children of a process.
+    static func children(_ pid: Int32) -> [Int32] {
+        let cap = 256
+        var buf = [Int32](repeating: 0, count: cap)
+        let n = proc_listchildpids(pid, &buf, Int32(cap * MemoryLayout<Int32>.size))
+        return n > 0 ? Array(buf.prefix(Int(n))) : []
+    }
+
+    private static let timebase: (numer: UInt64, denom: UInt64) = {
+        var t = mach_timebase_info_data_t(); mach_timebase_info(&t)
+        return (UInt64(t.numer), UInt64(max(t.denom, 1)))
+    }()
+
+    /// CPU time used so far and memory in use, for a process and everything it started (so `npm run dev` counts its node).
+    static func usage(of root: Int32) -> (cpuNs: UInt64, rss: UInt64)? {
+        var queue = [root], seen = Set<Int32>(), cpu: UInt64 = 0, rss: UInt64 = 0, found = false
+        while let pid = queue.popLast(), seen.count < 200 {
+            guard seen.insert(pid).inserted else { continue }
+            var info = proc_taskinfo()
+            let size = Int32(MemoryLayout<proc_taskinfo>.size)
+            if proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, size) == size {
+                found = true
+                cpu += (info.pti_total_user + info.pti_total_system) * timebase.numer / timebase.denom
+                rss += info.pti_resident_size
+            }
+            queue.append(contentsOf: children(pid))
+        }
+        return found ? (cpu, rss) : nil
+    }
+
     static func isAlive(_ pid: Int32) -> Bool {
         kill(pid, 0) == 0 || errno == EPERM
     }
@@ -112,4 +142,24 @@ func formatDuration(_ seconds: Int) -> String {
 func abbreviateHome(_ path: String) -> String {
     let home = NSHomeDirectory()
     return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+}
+
+/// What a server costs right now. CPU is a share of one core, so a busy multi-threaded server can pass 100.
+struct Usage: Equatable {
+    var cpu: Double
+    var memory: UInt64
+
+    static func cpuPercent(from before: UInt64, to now: UInt64, seconds: Double) -> Double {
+        guard now >= before, seconds > 0.2 else { return 0 }
+        return Double(now - before) / (seconds * 1_000_000_000) * 100
+    }
+
+    static func memoryText(_ bytes: UInt64) -> String {
+        let mb = Double(bytes) / 1_048_576
+        return mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : "\(Int(mb.rounded())) MB"
+    }
+
+    var memoryText: String { Self.memoryText(memory) }
+    var busy: Bool { cpu >= 50 }   // worth pointing out on the row
+    var cpuText: String { "\(Int(cpu.rounded()))% CPU" }
 }

@@ -48,6 +48,8 @@ final class Store: ObservableObject {
     private var knownRunningKeys: Set<String>?
     private var refreshTick = 0
     @Published var armedKill: String?
+    @Published private(set) var usage: [String: Usage] = [:]   // row key → CPU and memory
+    private var cpuSamples: [Int32: (ns: UInt64, at: Date)] = [:]
     @Published private(set) var editing: InlineEdit?   // the port or name being edited in its row
     @Published private(set) var names: [String: String] = [:]
     @Published private(set) var pinned: Set<String> = []
@@ -74,7 +76,7 @@ final class Store: ObservableObject {
     private var expectedStops: [String: Date] = [:]
 
     /// Fixed sample data, no polling, no disk. Used for README screenshots.
-    init(sample: [PortEntry], stopped: [KnownServer] = [], names: [String: String] = [:], pinned: Set<String> = [], stack: StackMap = .empty, showMap: Bool = false) {
+    init(sample: [PortEntry], stopped: [KnownServer] = [], names: [String: String] = [:], pinned: Set<String> = [], stack: StackMap = .empty, showMap: Bool = false, usage: [String: Usage] = [:]) {
         persistent = false
         showStopped = true
         notifyOnStop = false
@@ -85,6 +87,7 @@ final class Store: ObservableObject {
         self.stopped = stopped
         self.names = names
         self.pinned = pinned
+        self.usage = usage
     }
 
     init() {
@@ -182,7 +185,25 @@ final class Store: ObservableObject {
         markNew(result)
         remember(result)
         detectStops(result)
+        await sampleUsage(result)
         persist()
+    }
+
+    /// CPU needs two readings, so the first one for a server shows memory only. Containers have no process here and are skipped.
+    private func sampleUsage(_ list: [PortEntry]) async {
+        let roots: [(key: String, pid: Int32)] = list.filter { $0.kind != .other && $0.container == nil }
+            .compactMap { e in (e.restart?.rootPid ?? e.pid).map { (e.key, $0) } }
+        let readings = await Task.detached(priority: .utility) { roots.map { ($0.key, $0.pid, Proc.usage(of: $0.pid)) } }.value
+        let now = Date()
+        var next: [String: Usage] = [:], samples: [Int32: (ns: UInt64, at: Date)] = [:]
+        for (key, pid, r) in readings {
+            guard let r else { continue }
+            samples[pid] = (r.cpuNs, now)
+            let before = cpuSamples[pid]
+            next[key] = Usage(cpu: before.map { Usage.cpuPercent(from: $0.ns, to: r.cpuNs, seconds: now.timeIntervalSince($0.at)) } ?? 0, memory: r.rss)
+        }
+        cpuSamples = samples
+        if next != usage { usage = next }
     }
 
     /// Rows that show up after the first scan get a short green highlight.
