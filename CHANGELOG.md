@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.3] - 2026-10-25
+
 ### Security
 - The saved state and server logs are readable only by you (they were readable by other accounts on the Mac). Existing files are tightened at launch.
 - The terminal scripts Switchboard writes for logs are private and removed after use. Old ones are cleaned up.
