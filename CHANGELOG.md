@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-25
+
 ### Fixed
 - A server that stops now turns into a stopped row within about a second, not up to three. Switchboard notices the process is gone and scans right away.
 - With stopped servers hidden, a server that just stopped used to vanish without a trace when it was the only one in its project. It now stays on the list as stopped for a minute, so you can see it happened and why.
