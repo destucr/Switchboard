@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-10-25
+
 ### Fixed
 - Two processes sharing one port, such as a uvicorn parent and its worker, were counted as two running servers but drew only one row. They are now one server with one row.
 
