@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-25
+
 ### Added
 - Web servers show the page's own title under their name, and the page's icon beside it. The icon is fetched once per server and only from the same server, so a page can't make Switchboard call another host.
 
