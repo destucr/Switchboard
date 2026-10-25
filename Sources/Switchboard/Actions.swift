@@ -84,10 +84,10 @@ enum Actions {
     /// One log file per server, appended to. A restarted or started server writes here, so Logs can follow it.
     private static func openLog(_ name: String, _ port: Int, label: String) throws -> FileHandle {
         let dir = NSHomeDirectory() + "/Library/Logs/Switchboard"
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let slug = name.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
         let path = "\(dir)/\(slug)-\(port).log"
-        if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: nil) }
+        if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600]) }   // server output can hold secrets
         guard let log = FileHandle(forWritingAtPath: path) else { throw ActionError.message("Cannot open the log file") }
         log.seekToEndOfFile()
         log.write(Data("\n--- \(label) \(Date()) ---\n".utf8))
@@ -100,6 +100,7 @@ enum Actions {
     static func start(_ k: KnownServer, port: Int? = nil) async throws {
         if let id = k.containerID {
             guard let bin = Docker.binary else { throw ActionError.message("docker not found") }
+            guard id.range(of: #"^[A-Za-z0-9][A-Za-z0-9_.-]*$"#, options: .regularExpression) != nil else { throw ActionError.message("\(id) is not a container name or id.") }
             let r = await Task.detached { runCapture(bin, ["start", id], timeout: 30) }.value
             if r.status != 0 { throw ActionError.message("docker start failed. Was the container removed?") }
             return
@@ -173,8 +174,27 @@ enum Actions {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("switchboard-\(UUID().uuidString.prefix(8)).command")
         let script = "#!/bin/zsh\nprintf '\\033]0;%s\\007' \(shellQuote(title))\nexec \(command)\n"
         try? script.write(to: url, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 120) { try? FileManager.default.removeItem(at: url) }   // the terminal has read it long before this
         guard terminal.run(script: url, title: title) else { throw ActionError.message(terminal.mux == nil ? "Could not open \(terminal.name). Pick another terminal." : "\(terminal.name) is not there any more. Pick another terminal.") }
+    }
+
+    /// Scripts that earlier versions left in the temp folder, and files that were readable by other accounts. Runs at launch.
+    static func sweepOldScripts() {
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Switchboard").path
+        let logs = NSHomeDirectory() + "/Library/Logs/Switchboard"
+        for (dir, mode) in [(support, 0o700), (logs, 0o700)] where fm.fileExists(atPath: dir) {
+            try? fm.setAttributes([.posixPermissions: mode], ofItemAtPath: dir)
+            for name in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] where name.hasSuffix(".log") || name == "state.json" {
+                try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: dir + "/" + name)
+            }
+        }
+        let dir = fm.temporaryDirectory
+        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where name.hasPrefix("switchboard-") && name.hasSuffix(".command") {
+            let url = dir.appendingPathComponent(name)
+            if let m = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date, m < Date().addingTimeInterval(-3600) { try? fm.removeItem(at: url) }
+        }
     }
 
     // MARK: Share

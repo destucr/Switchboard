@@ -4,6 +4,13 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Security
+- The saved state and server logs are readable only by you (they were readable by other accounts on the Mac). Existing files are tightened at launch.
+- The terminal scripts Switchboard writes for logs are private and removed after use. Old ones are cleaned up.
+- Saving a switchboard.json no longer writes values that look like secrets, such as `--api-key abc` or `DB_PASSWORD=abc`. They become `<redacted>`, and Switchboard tells you.
+- A switchboard.json can no longer point a service's folder outside its project, and a Docker container name from it must look like a name.
+- The update page is only opened if it is an https link on github.com.
+
 ## [1.12.2] - 2026-10-25
 
 ### Fixed

@@ -39,7 +39,8 @@ enum Updates {
         guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = j["tag_name"] as? String, !tag.isEmpty,
               j["draft"] as? Bool != true, j["prerelease"] as? Bool != true,
-              let html = j["html_url"] as? String, let page = URL(string: html) else { return nil }
+              let html = j["html_url"] as? String, let page = URL(string: html),
+              page.scheme == "https", page.host == "github.com" else { return nil }
         return ReleaseInfo(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, notes: (j["body"] as? String) ?? "", page: page)
     }
 

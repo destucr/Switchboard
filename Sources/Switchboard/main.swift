@@ -409,6 +409,15 @@ if CommandLine.arguments.contains("--selftest") {
         for p in fam { kill(p, SIGKILL) }
     }
 
+    // Security hardening.
+    check("a service folder inside the project is kept", StackFile.insideRoot("web/app", root: "/p/api") == "/p/api/web/app")
+    check("a service folder outside the project is ignored", StackFile.insideRoot("../../etc", root: "/p/api") == "/p/api" && StackFile.insideRoot("/etc", root: "/p/api") == "/p/api" && StackFile.insideRoot("~/x", root: "/p/api") == "/p/api")
+    check("secret flags are hidden", StackFile.redactSecrets(["node", "s.js", "--api-key", "sk-123", "--port", "3000"]) == ["node", "s.js", "--api-key", "<redacted>", "--port", "3000"])
+    check("secret assignments are hidden", StackFile.redactSecrets(["env", "DB_PASSWORD=hunter2", "x", "--token=abc"]) == ["env", "DB_PASSWORD=<redacted>", "x", "--token=<redacted>"])
+    check("ordinary arguments stay", StackFile.redactSecrets(["npm", "run", "dev", "--", "--host", "0.0.0.0"]) == ["npm", "run", "dev", "--", "--host", "0.0.0.0"])
+    check("an update page on another host is refused", Updates.parse(Data(#"{"tag_name":"v9.0.0","html_url":"https://evil.example/x"}"#.utf8)) == nil && Updates.parse(Data(#"{"tag_name":"v9.0.0","html_url":"http://github.com/x"}"#.utf8)) == nil)
+    check("an update page on github is accepted", Updates.parse(Data(#"{"tag_name":"v9.0.0","html_url":"https://github.com/destucr/Switchboard/releases/tag/v9.0.0"}"#.utf8)) != nil)
+
     // CPU and memory.
     check("cpu share over two seconds", abs(Usage.cpuPercent(from: 1_000_000_000, to: 2_000_000_000, seconds: 2) - 50) < 0.001)
     check("cpu never goes negative", Usage.cpuPercent(from: 5, to: 1, seconds: 3) == 0 && Usage.cpuPercent(from: 1, to: 9, seconds: 0) == 0)
@@ -896,6 +905,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), CommandLine.arg
     exit(0)
 }
 Migration.run()
+Actions.sweepOldScripts()
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     let delegate = AppDelegate()

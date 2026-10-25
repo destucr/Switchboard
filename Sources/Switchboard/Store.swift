@@ -388,7 +388,7 @@ final class Store: ObservableObject {
 
     private var stateURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Switchboard")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         return dir.appendingPathComponent("state.json")
     }
 
@@ -402,6 +402,7 @@ final class Store: ObservableObject {
         dirty = false; lastSave = Date()
         if let data = try? JSONEncoder().encode(SavedState(known: known, names: names, pinned: pinned)) {
             try? data.write(to: stateURL, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateURL.path)   // it holds commands and paths
         }
     }
 
@@ -462,7 +463,8 @@ final class Store: ObservableObject {
            !Dialogs.confirm("Replace switchboard.json?", "\(abbreviateHome(path)) already exists. It will be rewritten from what Switchboard has seen.", ok: "Replace") { return }
         do {
             try file.write(to: root)
-            flash("Saved \(file.services.count) service\(file.services.count == 1 ? "" : "s") to switchboard.json. Commit it so your team gets the same stack.")
+            let hidden = file.services.contains { $0.command?.contains(StackFile.redacted) == true }
+            flash("Saved \(file.services.count) service\(file.services.count == 1 ? "" : "s") to switchboard.json. " + (hidden ? "Values that looked like secrets were replaced with \(StackFile.redacted). Check the file, then commit it." : "Commit it so your team gets the same stack."))
         } catch { flash("Could not save: \(error.localizedDescription)") }
     }
 

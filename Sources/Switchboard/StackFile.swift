@@ -53,12 +53,20 @@ struct StackFile: Codable {
         return services.map { s in
             var start: KnownStart?
             if let command = s.command, !command.isEmpty {
-                let cwd = (s.cwd.map { $0 == "." || $0.isEmpty ? root : root + "/" + $0 }) ?? root
+                let cwd = Self.insideRoot(s.cwd, root: root)
                 start = KnownStart(exec: "/bin/zsh", argv: ["zsh", "-lc", command], cwd: cwd)
             }
             return KnownServer(key: "\(root):\(s.port)", port: s.port, title: s.name, group: group, projectPath: root, start: start,
                                containerID: s.container, lastSeen: Date(), uses: (s.dependsOn ?? []).compactMap { keyOf[$0] })
         }
+    }
+
+    /// The service's folder, kept inside the project. `../..` or an absolute path falls back to the project folder.
+    static func insideRoot(_ cwd: String?, root: String) -> String {
+        guard let c = cwd, !c.isEmpty, c != "." else { return root }
+        guard !c.hasPrefix("/"), !c.hasPrefix("~") else { return root }
+        let full = URL(fileURLWithPath: root + "/" + c).standardizedFileURL.path
+        return full == root || full.hasPrefix(root + "/") ? full : root
     }
 
     // MARK: Servers to file
@@ -88,6 +96,22 @@ struct StackFile: Codable {
         return StackFile(name: (root as NSString).lastPathComponent, services: services)
     }
 
+    static let redacted = "<redacted>"
+    private static let secretName = try! NSRegularExpression(pattern: "(token|secret|passw|api[-_]?key|auth|credential|bearer|private[-_]?key)", options: .caseInsensitive)
+    private static func looksSecret(_ s: String) -> Bool { secretName.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil }
+
+    /// The value of `--token abc`, `--token=abc` or `TOKEN=abc` is replaced, so a secret never ends up in a committed file.
+    static func redactSecrets(_ args: [String]) -> [String] {
+        var out: [String] = [], hideNext = false
+        for a in args {
+            if hideNext { out.append(redacted); hideNext = false; continue }
+            if let eq = a.firstIndex(of: "="), looksSecret(String(a[..<eq])) { out.append(String(a[..<eq]) + "=" + redacted); continue }
+            if a.hasPrefix("-"), looksSecret(a) { hideNext = true }
+            out.append(a)
+        }
+        return out
+    }
+
     /// A command that works on another machine: `node /Users/me/.nvm/.../npm-cli.js run dev` becomes `npm run dev`.
     static func portableCommand(_ s: KnownStart, root: String) -> String {
         var tool = (s.exec as NSString).lastPathComponent
@@ -100,7 +124,7 @@ struct StackFile: Codable {
             else if f.contains("/yarn") { tool = "yarn"; args.removeFirst() }
         }
         let home = NSHomeDirectory()
-        let parts = ([tool] + args).map { a -> String in
+        let parts = ([tool] + redactSecrets(args)).map { a -> String in
             var v = a
             if v.hasPrefix(root + "/") { v = "./" + v.dropFirst(root.count + 1) }
             else if v == root { v = "." }
