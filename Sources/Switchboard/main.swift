@@ -314,6 +314,19 @@ if CommandLine.arguments.contains("--selftest") {
     let plain = PortEntry(id: "c", port: 3000, host: "127.0.0.1", lanExposed: false, kind: .dev, title: "x", pid: 1, command: "", projectName: "p", projectPath: "/p", group: "p", uptime: nil, container: nil, web: .page, restart: nil)
     check("copy as curl", plain.curl == "curl -i http://localhost:3000")
 
+    // Two processes sharing one listening socket are one row.
+    do {
+        func entry(_ pid: Int32, root: Int32) -> PortEntry {
+            PortEntry(id: "\(pid):8000", port: 8000, host: "127.0.0.1", lanExposed: false, kind: .dev, title: "Uvicorn", pid: pid, command: "", projectName: "api",
+                      projectPath: "/p/api", group: "api", uptime: nil, container: nil, web: .page,
+                      restart: RestartSpec(exec: "/bin/true", argv: [], env: [:], cwd: "/p/api", rootPid: root))
+        }
+        let one = Scanner.oneRowPerPort([entry(43186, root: 435), entry(435, root: 435)])
+        check("a shared socket is one row", one.count == 1)
+        check("the process that started the others wins", one.first?.pid == 435)
+        check("different ports stay separate", Scanner.oneRowPerPort([entry(1, root: 1), { var e = entry(2, root: 2); e.port = 8001; e.projectPath = "/p/api2"; return e }()]).count == 2)
+    }
+
     // CPU and memory.
     check("cpu share over two seconds", abs(Usage.cpuPercent(from: 1_000_000_000, to: 2_000_000_000, seconds: 2) - 50) < 0.001)
     check("cpu never goes negative", Usage.cpuPercent(from: 5, to: 1, seconds: 3) == 0 && Usage.cpuPercent(from: 1, to: 9, seconds: 0) == 0)

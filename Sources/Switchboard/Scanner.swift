@@ -33,6 +33,8 @@ enum Scanner {
             entries.append(e)
         }
 
+        entries = oneRowPerPort(entries)
+
         for d in docker {
             let image = d.container.image.split(separator: "/").last.map(String.init) ?? d.container.image
             let isDB = Detector.flavor(exec: image, argv: [image.split(separator: ":").first.map(String.init) ?? image], cwd: nil, project: nil).kind == .database
@@ -51,6 +53,23 @@ enum Scanner {
 
         probeWebKinds(&entries)
         return entries.sorted { ($0.group.lowercased(), $0.port) < ($1.group.lowercased(), $1.port) }
+    }
+
+    /// Two processes can hold the same listening socket, for example a uvicorn parent and the worker it forked.
+    /// That is one server on one port, so it gets one row. The process that started the others wins, then the lowest pid.
+    static func oneRowPerPort(_ list: [PortEntry]) -> [PortEntry] {
+        func isRoot(_ e: PortEntry) -> Bool { e.pid != nil && e.pid == e.restart?.rootPid }
+        var best: [String: PortEntry] = [:], order: [String] = []
+        for e in list {
+            if let cur = best[e.key] {
+                let better = isRoot(e) != isRoot(cur) ? isRoot(e) : (e.pid ?? .max) < (cur.pid ?? .max)
+                if better { best[e.key] = e }
+            } else {
+                best[e.key] = e
+                order.append(e.key)
+            }
+        }
+        return order.compactMap { best[$0] }
     }
 
     /// Ask each candidate port what it serves, in parallel (≤ ~1s total).
