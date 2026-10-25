@@ -48,6 +48,7 @@ final class Store: ObservableObject {
     private var knownRunningKeys: Set<String>?
     private var refreshTick = 0
     @Published var armedKill: String?
+    @Published private(set) var justStopped: [String: Date] = [:]   // servers that just went away, kept on the list for a minute even when stopped ones are hidden
     @Published private(set) var usage: [String: Usage] = [:]   // row key → CPU and memory
     @Published private(set) var icons: [String: NSImage] = [:]   // row key → the page's icon
     private var iconAttempts = Set<String>()   // server and icon path already tried, so a missing icon is not asked for every 3 seconds
@@ -113,6 +114,12 @@ final class Store: ObservableObject {
                 try? await Task.sleep(for: .seconds(3))
             }
         }
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                self?.checkPids()
+            }
+        }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self, tunnels] _ in
             MainActor.assumeIsolated { tunnels.stopAll(); self?.persist(force: true) }
         }
@@ -143,7 +150,7 @@ final class Store: ObservableObject {
         let runningGroups = Set(running.map { pinned.contains($0.key) ? "Pinned" : $0.group })
         let stoppedVisible = stopped.filter { k in
             matches(query, [k.title, k.group, String(k.port)]) &&
-            (showStopped || declaredKeys.contains(k.key) || runningGroups.contains(pinned.contains(k.key) ? "Pinned" : k.group))
+            (showStopped || declaredKeys.contains(k.key) || justStopped[k.key] != nil || runningGroups.contains(pinned.contains(k.key) ? "Pinned" : k.group))
         }
 
         var order: [String] = []
@@ -171,8 +178,19 @@ final class Store: ObservableObject {
 
     // MARK: Refresh
 
+    private var refreshing = false
+    private var lastPidCheck = Date.distantPast
+
     func refresh() async {
+        while refreshing { try? await Task.sleep(for: .milliseconds(50)) }   // one scan at a time; a caller still gets a scan that started after its call
+        refreshing = true
+        defer { refreshing = false }
         let result = await Task.detached(priority: .utility) { Scanner.scan() }.value
+        let before = Set(entries.filter { $0.kind != .other }.map(\.key))
+        let after = Set(result.filter { $0.kind != .other }.map(\.key))
+        for gone in before.subtracting(after) { noteStopped(gone) }
+        let expired = justStopped.filter { after.contains($0.key) || Date().timeIntervalSince($0.value) > 60 }.map(\.key)
+        if !expired.isEmpty { withAnimation(Motion.anim) { for k in expired { justStopped[k] = nil } } }
         if result != entries { withAnimation(Motion.anim) { entries = result } }
         if let s = selectedKey, !navKeys.contains(s) { selectedKey = nil }
         if let ed = editing, !result.contains(where: { $0.key == ed.key }) || busy[ed.key] != nil { editing = nil }   // the server went away or got busy
@@ -225,6 +243,17 @@ final class Store: ObservableObject {
         }
         cpuSamples = samples
         if next != usage { usage = next }
+    }
+
+    /// A server that was running a moment ago is shown as stopped for a minute, even when stopped servers are hidden, so you see it happen.
+    func noteStopped(_ key: String) { justStopped[key] = Date() }
+
+    /// A running server whose process is gone gets a scan right away, instead of waiting for the next one.
+    private func checkPids() {
+        guard persistent, !refreshing, Date().timeIntervalSince(lastPidCheck) > 1 else { return }
+        guard entries.contains(where: { $0.kind != .other && $0.pid.map { !Proc.isAlive($0) } == true }) else { return }
+        lastPidCheck = Date()
+        Task { await refresh() }
     }
 
     /// Rows that show up after the first scan get a short green highlight.

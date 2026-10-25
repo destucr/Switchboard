@@ -381,6 +381,19 @@ if CommandLine.arguments.contains("--selftest") {
         close(fd)
     }
 
+    // A server that just stopped stays visible for a minute, even with stopped servers hidden.
+    MainActor.assumeIsolated {
+        let gone = KnownServer(key: "/p/api:8000", port: 8000, title: "API", group: "api", projectPath: "/p/api",
+                               start: KnownStart(exec: "/usr/bin/true", argv: [], cwd: "/p/api"), containerID: nil, lastSeen: Date())
+        let other = PortEntry(id: "1:3000", port: 3000, host: "127.0.0.1", lanExposed: false, kind: .dev, title: "Vite", pid: 1, command: "", projectName: "web",
+                              projectPath: "/p/web", group: "web", uptime: nil, container: nil, web: .page, restart: nil)
+        let s = Store(sample: [other], stopped: [gone])
+        s.showStopped = false
+        check("a stopped server is hidden when stopped ones are hidden", !s.groups.contains { $0.name == "api" })
+        s.noteStopped(gone.key)
+        check("a server that just stopped is shown as stopped", s.groups.first { $0.name == "api" }?.stopped.map(\.port) == [8000])
+    }
+
     // CPU and memory.
     check("cpu share over two seconds", abs(Usage.cpuPercent(from: 1_000_000_000, to: 2_000_000_000, seconds: 2) - 50) < 0.001)
     check("cpu never goes negative", Usage.cpuPercent(from: 5, to: 1, seconds: 3) == 0 && Usage.cpuPercent(from: 1, to: 9, seconds: 0) == 0)
@@ -532,6 +545,33 @@ if let i = CommandLine.arguments.firstIndex(of: "--move-e2e"), CommandLine.argum
         Task { await store.refresh() }
         _ = spin(until: { false }, timeout: 2)
         for g in store.groups { print("list:", g.name, "running", g.running.map(\.port), "stopped", g.stopped.map(\.port)) }
+    }
+    exit(0)
+}
+
+// Debug helper: `Switchboard --stop-e2e 8899 [hide|show]` kills the real server on that port from outside, then prints the list every second.
+if let i = CommandLine.arguments.firstIndex(of: "--stop-e2e"), CommandLine.arguments.count > i + 1, let port = Int(CommandLine.arguments[i + 1]) {
+    MainActor.assumeIsolated {
+        _ = NSApplication.shared
+        let store = Store.shared
+        if CommandLine.arguments.contains("hide") { store.showStopped = false }
+        if CommandLine.arguments.contains("show") { store.showStopped = true }
+        func spin(_ seconds: Double, until cond: () -> Bool = { false }) -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end { if cond() { return true }; RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+            return cond()
+        }
+        @MainActor func show(_ label: String) {
+            let rows = store.groups.map { g in "\(g.name) run\(g.running.map(\.port)) stop\(g.stopped.map { "\($0.port)\($0.stopReason.map { " why=\($0.prefix(30))" } ?? "")" })" }
+            print(label, "| showStopped:", store.showStopped, "|", rows.filter { $0.contains("\(port)") || $0.contains("stop[") }.joined(separator: " ; "))
+        }
+        _ = spin(8, until: { store.entries.contains { $0.port == port } })
+        guard let e = store.entries.first(where: { $0.port == port }), let pid = e.pid else { print("nothing on :\(port)"); exit(1) }
+        _ = spin(7)   // a few scans, so the server is remembered
+        show("before kill")
+        kill(pid, SIGKILL)
+        let t0 = Date()
+        for _ in 0..<24 { _ = spin(0.5); show(String(format: "+%.1fs", Date().timeIntervalSince(t0))) }
     }
     exit(0)
 }
