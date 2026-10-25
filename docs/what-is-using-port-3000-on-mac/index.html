@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What is using port 3000 on Mac? How to find it</title>
+<meta name="description" content="Find out which process and project holds a port on macOS with one lsof command, and what to do about it. Works for 3000, 5000, 8080 and any other port.">
+<link rel="canonical" href="https://destucr.github.io/Switchboard/what-is-using-port-3000-on-mac/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Switchboard">
+<meta property="og:title" content="What is using port 3000 on Mac? How to find it">
+<meta property="og:description" content="Find out which process and project holds a port on macOS with one lsof command, and what to do about it. Works for 3000, 5000, 8080 and any other port.">
+<meta property="og:url" content="https://destucr.github.io/Switchboard/what-is-using-port-3000-on-mac/">
+<meta property="og:image" content="https://destucr.github.io/Switchboard/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#4F46E5">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "What is using port 3000 on a Mac?", "description": "Find out which process and project holds a port on macOS with one lsof command, and what to do about it. Works for 3000, 5000, 8080 and any other port.", "datePublished": "2026-10-25", "dateModified": "2026-10-25", "author": {"@type": "Person", "name": "destucr", "url": "https://github.com/destucr"}, "mainEntityOfPage": "https://destucr.github.io/Switchboard/what-is-using-port-3000-on-mac/"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I see what is using a port on a Mac?", "acceptedAnswer": {"@type": "Answer", "text": "Run lsof -nP -iTCP:3000 -sTCP:LISTEN in Terminal, replacing 3000 with your port. It prints the process that is listening on that port, or nothing if the port is free."}}]}</script>
+<link rel="stylesheet" href="../guide.css">
+</head>
+<body>
+<div class="wrap">
+<nav><a class="logo" href="../"><i></i>Switchboard</a><a class="get" href="https://github.com/destucr/Switchboard/releases/latest">Download</a></nav>
+<main>
+<h1>What is using port 3000 on a Mac?</h1>
+
+<p class="lead">Run this in Terminal. It prints the process that is listening on port 3000, or nothing if the port is free.</p>
+<pre><code>lsof -nP -iTCP:3000 -sTCP:LISTEN</code></pre>
+<p>The line it prints has the program name, its PID (the number you need to stop it) and the user. <code>-nP</code> skips name lookups so it answers fast. <code>-sTCP:LISTEN</code> keeps only the server itself, not your browser or anything else connected to it.</p>
+
+<h2>Find which project it belongs to</h2>
+<p>A PID alone does not tell you which of your projects started it. Ask for its folder and its full command:</p>
+<pre><code>lsof -a -p 12345 -d cwd
+ps -p 12345 -o command=</code></pre>
+<p>Replace 12345 with the PID. The first line shows the folder it runs from, and the second shows the command, for example <code>node ./node_modules/.bin/next dev</code>.</p>
+
+<h2>If nothing shows up</h2>
+<ul>
+<li>The port is free. Whatever failed to start may be using a different port.</li>
+<li>The process belongs to another user. Try the same command with <code>sudo</code>.</li>
+<li>It runs in Docker. Check <code>docker ps</code> and look at the Ports column.</li>
+</ul>
+
+<h2>Port 5000 or 7000 on a Mac</h2>
+<p>On recent versions of macOS, ports 5000 and 7000 are often taken by AirPlay Receiver, which shows up as ControlCenter. If a Flask or similar app cannot use 5000, turn off AirPlay Receiver in System Settings, under General, then AirDrop &amp; Handoff. Or run your app on another port.</p>
+
+<h2>What to do next</h2>
+<p>If it is something you forgot about, <a href="../kill-a-port-on-mac/">stop it</a>. If you need both running, start yours on another port. If your app crashed with an error, see <a href="../eaddrinuse-address-already-in-use/">how to fix EADDRINUSE</a>.</p>
+
+<div class="callout">
+<h2>Or do it in Switchboard</h2>
+<p>Open Switchboard from the menu bar and type <code>3000</code> in the filter box. It shows whether the port is free and, if not, which server holds it, which project it belongs to and how long it has been running. No PID hunting.</p>
+<p>Switchboard is a free, open source menu bar app for Mac. Install it with <code>brew install --cask destucr/tap/switchboard</code>.</p>
+<a class="btn" href="../">See what it does</a>
+</div>
+<div class="related"><h2>More guides</h2><a href="../kill-a-port-on-mac/">Kill a port on Mac</a><a href="../eaddrinuse-address-already-in-use/">Fix EADDRINUSE address already in use</a></div>
+</main>
+<footer><a href="../">Switchboard</a><a href="https://github.com/destucr/Switchboard">GitHub</a><a href="https://github.com/destucr/Switchboard/releases">Releases</a></footer>
+</div>
+</body>
+</html>

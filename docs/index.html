@@ -3,24 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Switchboard: every local port, with its project</title>
-<meta name="description" content="Free Mac menu bar app that shows every localhost port with its project. Find what is using a port, then open, restart, read logs or stop it. See how your servers connect.">
+<title>Switchboard: Mac menu bar port manager for localhost</title>
+<meta name="description" content="A free port manager in your Mac menu bar. See every localhost port with its project, find what is using it, then open, restart, read logs or stop it.">
 <link rel="canonical" href="https://destucr.github.io/Switchboard/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Switchboard: every local port, with its project">
-<meta property="og:description" content="Free Mac menu bar app that shows what is running on localhost and which project owns it. Open, restart, read logs or stop it.">
+<meta property="og:site_name" content="Switchboard">
+<meta property="og:title" content="Switchboard: Mac menu bar port manager for localhost">
+<meta property="og:description" content="A free port manager in your Mac menu bar. See what is running on localhost and which project owns it. Open, restart, read logs or stop it.">
 <meta property="og:url" content="https://destucr.github.io/Switchboard/">
 <meta property="og:image" content="https://destucr.github.io/Switchboard/og.png">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Switchboard: Mac menu bar port manager for localhost">
+<meta name="twitter:description" content="A free port manager in your Mac menu bar. See every localhost port with its project, then open, restart, read logs or stop it.">
 <meta name="twitter:image" content="https://destucr.github.io/Switchboard/og.png">
 <meta name="theme-color" content="#4F46E5">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Switchboard","applicationCategory":"DeveloperApplication","operatingSystem":"macOS 14 or later","description":"Free Mac menu bar app that shows every localhost port with its project. Find what is using a port, then open, restart, read logs or stop it.","url":"https://destucr.github.io/Switchboard/","downloadUrl":"https://github.com/destucr/Switchboard/releases/latest","image":"https://destucr.github.io/Switchboard/og.png","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Switchboard","applicationCategory":"DeveloperApplication","operatingSystem":"macOS 14 or later","description":"A free port manager in your Mac menu bar. See every localhost port with its project, find what is using it, then open, restart, read logs or stop it.","url":"https://destucr.github.io/Switchboard/","downloadUrl":"https://github.com/destucr/Switchboard/releases/latest","image":"https://destucr.github.io/Switchboard/og.png","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
-{"@type":"Question","name":"How do I see what is using port 3000 on a Mac?","acceptedAnswer":{"@type":"Answer","text":"Type 3000 in Switchboard's filter box. It shows whether the port is free and, if not, which process and project holds it. In Terminal the equivalent is: lsof -i :3000"}},
-{"@type":"Question","name":"How do I kill the process on a port on macOS?","acceptedAnswer":{"@type":"Answer","text":"Click Stop on the server's row in Switchboard. In Terminal: kill $(lsof -t -i :3000)"}},
+{"@type":"Question","name":"How do I see what is using port 3000 on a Mac?","acceptedAnswer":{"@type":"Answer","text":"Type 3000 in Switchboard's filter box. It shows whether the port is free and, if not, which process and project holds it. In Terminal the equivalent is: lsof -nP -iTCP:3000 -sTCP:LISTEN"}},
+{"@type":"Question","name":"How do I kill the process on a port on macOS?","acceptedAnswer":{"@type":"Answer","text":"Click Stop on the server's row in Switchboard. In Terminal: kill $(lsof -t -iTCP:3000 -sTCP:LISTEN)"}},
 {"@type":"Question","name":"Does it work with Docker?","acceptedAnswer":{"@type":"Answer","text":"Yes. Docker containers with published ports are listed next to your other servers, and you can stop, restart and read their logs."}},
 {"@type":"Question","name":"Is it free?","acceptedAnswer":{"@type":"Answer","text":"Yes. It is open source and installs with Homebrew."}}
 ]}
@@ -183,15 +186,16 @@ footer a{text-decoration:none;margin-right:20px}footer a:hover{color:var(--ink)}
 
 <section class="block faq" id="faq">
 <h2 style="margin-bottom:24px">Questions</h2>
-<details><summary>How do I see what is using port 3000 on a Mac?</summary><p>Type 3000 in Switchboard's filter box. It shows whether the port is free and, if not, which process and project holds it. In Terminal the equivalent is <code>lsof -i :3000</code>.</p></details>
-<details><summary>How do I kill the process on a port on macOS?</summary><p>Click Stop on the server's row. In Terminal: <code>kill $(lsof -t -i :3000)</code>.</p></details>
+<details><summary>How do I see what is using port 3000 on a Mac?</summary><p>Type 3000 in Switchboard's filter box. It shows whether the port is free and, if not, which process and project holds it. In Terminal the equivalent is <code>lsof -nP -iTCP:3000 -sTCP:LISTEN</code>. <a href="what-is-using-port-3000-on-mac/">More on finding what holds a port</a>.</p></details>
+<details><summary>How do I kill the process on a port on macOS?</summary><p>Click Stop on the server's row. In Terminal: <code>kill $(lsof -t -iTCP:3000 -sTCP:LISTEN)</code>. <a href="kill-a-port-on-mac/">How to do it safely</a>.</p></details>
 <details><summary>How does the map know what is connected?</summary><p>It looks at the open connections between servers on your Mac right now. Arrows point at the server being used. A solid line means a connection was seen. A dashed line means a project's <code>.env</code> names that port but no connection was seen. A red line means the server answers with an error, or the <code>.env</code> names a port where nothing is listening. A missing line does not prove two servers are unrelated, because a connection that is closed when it looks cannot be seen. The dashed box is the project folder, nothing more.</p></details>
+<details><summary>What does “address already in use” mean?</summary><p>Another process is already listening on the port your server asked for. Stop it or start yours on another port. <a href="eaddrinuse-address-already-in-use/">Three ways to fix it</a>.</p></details>
 <details><summary>Does it work with Docker?</summary><p>Yes. Containers with published ports are listed next to your other servers, and you can stop, restart and read their logs.</p></details>
 <details><summary>Does it send any data anywhere?</summary><p>Very little. Switchboard reads your local ports and processes and keeps its settings on your Mac. At launch and every few hours it asks GitHub whether a newer version exists, and sends nothing about you. You can turn that off in the settings menu. A public link only starts if you ask for it and uses cloudflared or ngrok. The code is on GitHub if you want to check.</p></details>
 <details><summary>Is it free?</summary><p>Yes. It is open source under the MIT license and installs with Homebrew.</p></details>
 </section>
 
-<footer><div><a href="https://github.com/destucr/Switchboard">GitHub</a><a href="https://github.com/destucr/Switchboard/releases">Releases</a><a href="https://github.com/destucr/Switchboard/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/destucr/Switchboard/issues">Report a problem</a></div><div>MIT license</div></footer>
+<footer><div><a href="what-is-using-port-3000-on-mac/">Find a port</a><a href="kill-a-port-on-mac/">Kill a port</a><a href="eaddrinuse-address-already-in-use/">Fix EADDRINUSE</a><a href="https://github.com/destucr/Switchboard">GitHub</a><a href="https://github.com/destucr/Switchboard/releases">Releases</a><a href="https://github.com/destucr/Switchboard/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/destucr/Switchboard/issues">Report a problem</a></div><div>MIT license</div></footer>
 </div>
 <script>
 document.querySelectorAll('[data-cmd]').forEach(function(b){var t=b.textContent;b.addEventListener('click',function(){try{navigator.clipboard.writeText(b.dataset.cmd);b.textContent='Copied';setTimeout(function(){b.textContent=t},1400)}catch(e){}})});

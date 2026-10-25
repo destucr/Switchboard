@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to kill the process on a port on Mac</title>
+<meta name="description" content="Stop whatever is using a port on macOS. The one command that is safe, why the common version can kill your browser, and what to do when it comes back.">
+<link rel="canonical" href="https://destucr.github.io/Switchboard/kill-a-port-on-mac/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Switchboard">
+<meta property="og:title" content="How to kill the process on a port on Mac">
+<meta property="og:description" content="Stop whatever is using a port on macOS. The one command that is safe, why the common version can kill your browser, and what to do when it comes back.">
+<meta property="og:url" content="https://destucr.github.io/Switchboard/kill-a-port-on-mac/">
+<meta property="og:image" content="https://destucr.github.io/Switchboard/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#4F46E5">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "How to kill the process on a port on a Mac", "description": "Stop whatever is using a port on macOS. The one command that is safe, why the common version can kill your browser, and what to do when it comes back.", "datePublished": "2026-10-25", "dateModified": "2026-10-25", "author": {"@type": "Person", "name": "destucr", "url": "https://github.com/destucr"}, "mainEntityOfPage": "https://destucr.github.io/Switchboard/kill-a-port-on-mac/"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I kill the process on a port on macOS?", "acceptedAnswer": {"@type": "Answer", "text": "Run kill $(lsof -t -iTCP:3000 -sTCP:LISTEN) in Terminal, replacing 3000 with your port. The -sTCP:LISTEN part keeps it to the server itself, so a browser connected to the port is not killed."}}]}</script>
+<link rel="stylesheet" href="../guide.css">
+</head>
+<body>
+<div class="wrap">
+<nav><a class="logo" href="../"><i></i>Switchboard</a><a class="get" href="https://github.com/destucr/Switchboard/releases/latest">Download</a></nav>
+<main>
+<h1>How to kill the process on a port on a Mac</h1>
+
+<p class="lead">This stops the server that is listening on port 3000, and nothing else.</p>
+<pre><code>kill $(lsof -t -iTCP:3000 -sTCP:LISTEN)</code></pre>
+<p><code>lsof -t</code> prints only the PID, and <code>kill</code> asks that process to quit. Use your own port in place of 3000.</p>
+
+<h2>Why not lsof -t -i :3000</h2>
+<p>You will see this version in many answers. Without <code>-sTCP:LISTEN</code> it also matches every program that is connected to the port, such as a browser tab. Running <code>kill</code> on that list can close your browser along with the server.</p>
+
+<h2>If it does not quit</h2>
+<p>Wait a few seconds first, because some servers close connections before they exit. Then check:</p>
+<pre><code>lsof -nP -iTCP:3000 -sTCP:LISTEN</code></pre>
+<p>If it is still there, force it with <code>kill -9</code> and the PID. This gives the program no chance to clean up, so use it last.</p>
+
+<h2>If it keeps coming back</h2>
+<ul>
+<li>A watcher such as nodemon or a process manager restarts it. Stop the watcher too.</li>
+<li>The server has workers, like uvicorn or gunicorn. Stopping one process can leave a worker holding the port. Stop the parent and its children.</li>
+<li>It is a Docker container. Use <code>docker stop</code> with the container name. Killing the process that holds the port does not stop the container.</li>
+</ul>
+
+<h2>Check before you kill</h2>
+<p>It is easy to stop the wrong thing, especially a database that other servers are using. Look at the process first with <code>ps -p PID -o command=</code>. See <a href="../what-is-using-port-3000-on-mac/">how to find what is using a port</a>.</p>
+
+<div class="callout">
+<h2>Or do it in Switchboard</h2>
+<p>Click Stop on the server's row. Switchboard stops the server together with its workers, tells you if something still holds the port, warns you first if other servers are using it, and gives you Undo if it was the wrong one.</p>
+<p>Switchboard is a free, open source menu bar app for Mac. Install it with <code>brew install --cask destucr/tap/switchboard</code>.</p>
+<a class="btn" href="../">See what it does</a>
+</div>
+<div class="related"><h2>More guides</h2><a href="../what-is-using-port-3000-on-mac/">What is using port 3000 on Mac</a><a href="../eaddrinuse-address-already-in-use/">Fix EADDRINUSE address already in use</a></div>
+</main>
+<footer><a href="../">Switchboard</a><a href="https://github.com/destucr/Switchboard">GitHub</a><a href="https://github.com/destucr/Switchboard/releases">Releases</a></footer>
+</div>
+</body>
+</html>

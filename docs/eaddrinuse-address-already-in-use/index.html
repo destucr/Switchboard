@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix EADDRINUSE: address already in use on Mac</title>
+<meta name="description" content="What EADDRINUSE and Address already in use mean, and three ways to fix them on macOS: stop what holds the port, use another port, or find why it is stuck.">
+<link rel="canonical" href="https://destucr.github.io/Switchboard/eaddrinuse-address-already-in-use/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Switchboard">
+<meta property="og:title" content="Fix EADDRINUSE: address already in use on Mac">
+<meta property="og:description" content="What EADDRINUSE and Address already in use mean, and three ways to fix them on macOS: stop what holds the port, use another port, or find why it is stuck.">
+<meta property="og:url" content="https://destucr.github.io/Switchboard/eaddrinuse-address-already-in-use/">
+<meta property="og:image" content="https://destucr.github.io/Switchboard/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#4F46E5">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "Fix “EADDRINUSE: address already in use” on a Mac", "description": "What EADDRINUSE and Address already in use mean, and three ways to fix them on macOS: stop what holds the port, use another port, or find why it is stuck.", "datePublished": "2026-10-25", "dateModified": "2026-10-25", "author": {"@type": "Person", "name": "destucr", "url": "https://github.com/destucr"}, "mainEntityOfPage": "https://destucr.github.io/Switchboard/eaddrinuse-address-already-in-use/"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What does EADDRINUSE mean?", "acceptedAnswer": {"@type": "Answer", "text": "It means the port your server asked for is already in use by another process. Stop that process, or start your server on a different port."}}]}</script>
+<link rel="stylesheet" href="../guide.css">
+</head>
+<body>
+<div class="wrap">
+<nav><a class="logo" href="../"><i></i>Switchboard</a><a class="get" href="https://github.com/destucr/Switchboard/releases/latest">Download</a></nav>
+<main>
+<h1>Fix “EADDRINUSE: address already in use” on a Mac</h1>
+
+<p class="lead">It means another process is already listening on the port your server asked for. Only one program can use a port at a time.</p>
+<p>You may see it as <code>Error: listen EADDRINUSE: address already in use :::3000</code> in Node, <code>OSError: [Errno 48] Address already in use</code> in Python, or <code>bind: address already in use</code> in Go. They are the same problem.</p>
+
+<h2>1. Stop what is using it</h2>
+<p>Often it is your own server from a terminal you closed, or a second copy that started by accident. Find it and stop it:</p>
+<pre><code>lsof -nP -iTCP:3000 -sTCP:LISTEN
+kill PID</code></pre>
+<p>More detail in <a href="../what-is-using-port-3000-on-mac/">how to find what is using a port</a> and <a href="../kill-a-port-on-mac/">how to kill it safely</a>.</p>
+
+<h2>2. Use another port</h2>
+<p>If the other process should keep running, start yours somewhere else:</p>
+<pre><code>PORT=3001 npm start
+vite --port 3001
+next dev -p 3001
+flask run --port 5001
+rails server -p 3001
+python3 manage.py runserver 8001
+php artisan serve --port=8001</code></pre>
+
+<h2>3. Look for the cause</h2>
+<ul>
+<li><strong>Ports 5000 and 7000:</strong> on recent macOS, AirPlay Receiver uses them. Turn it off in System Settings, under General, then AirDrop &amp; Handoff.</li>
+<li><strong>A leftover process:</strong> a crash or a closed terminal can leave a server running with nobody watching it.</li>
+<li><strong>Docker:</strong> a container may publish the same port. Check <code>docker ps</code>.</li>
+<li><strong>Reload tools:</strong> a watcher can start a new copy before the old one has quit.</li>
+</ul>
+
+<div class="callout">
+<h2>Or do it in Switchboard</h2>
+<p>If you start a stopped server whose port is taken, Switchboard says who is using it and offers the next free port. For a running server, double click its port number to move it to another port, and press Undo if you change your mind.</p>
+<p>Switchboard is a free, open source menu bar app for Mac. Install it with <code>brew install --cask destucr/tap/switchboard</code>.</p>
+<a class="btn" href="../">See what it does</a>
+</div>
+<div class="related"><h2>More guides</h2><a href="../what-is-using-port-3000-on-mac/">What is using port 3000 on Mac</a><a href="../kill-a-port-on-mac/">Kill a port on Mac</a></div>
+</main>
+<footer><a href="../">Switchboard</a><a href="https://github.com/destucr/Switchboard">GitHub</a><a href="https://github.com/destucr/Switchboard/releases">Releases</a></footer>
+</div>
+</body>
+</html>

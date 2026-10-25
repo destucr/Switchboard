@@ -1,0 +1,25 @@
+:root{--bg:#fbfbfd;--ink:#0d0d14;--sub:#5d5d72;--faint:#8b8ba0;--line:#e6e6ef;--card:#ffffff;--brand:#4F46E5;--code:#f1f1f8}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a10;--ink:#f3f3fa;--sub:#a2a2b8;--faint:#6f6f86;--line:#22222f;--card:#12121b;--brand:#8b85ff;--code:#171723}}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand)}
+.wrap{max-width:720px;margin:0 auto;padding:0 24px}
+nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+.logo{font-weight:650;font-size:18px;letter-spacing:-.01em;text-decoration:none;color:var(--ink);display:flex;align-items:center;gap:10px}
+.logo i{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#6d65ff,#4F46E5);display:inline-block}
+nav a.get{font-size:14px;font-weight:600;text-decoration:none;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px}
+h1{font-size:clamp(32px,6vw,46px);line-height:1.08;letter-spacing:-.03em;font-weight:680;margin:36px 0 18px;text-wrap:balance}
+h2{font-size:24px;letter-spacing:-.02em;margin:44px 0 12px;line-height:1.2}
+p{margin:14px 0;color:var(--sub)}
+p.lead{font-size:20px;color:var(--ink)}
+ul,ol{margin:12px 0 12px 22px;color:var(--sub)}li{margin:8px 0}
+code{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:1px 6px;border-radius:5px;color:var(--ink)}
+pre{background:var(--code);border:1px solid var(--line);border-radius:14px;padding:16px 18px;overflow-x:auto;margin:16px 0}
+pre code{background:none;padding:0;font-size:14px}
+.callout{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:26px;margin:40px 0}
+.callout h2{margin:0 0 8px;font-size:21px}
+.btn{display:inline-block;margin-top:8px;padding:11px 20px;border-radius:999px;background:var(--ink);color:var(--bg);font-weight:600;font-size:15px;text-decoration:none}
+.related{border-top:1px solid var(--line);margin-top:48px;padding-top:8px}
+.related a{display:block;margin:10px 0}
+footer{padding:40px 0 48px;color:var(--faint);font-size:14px}
+footer a{color:var(--faint);margin-right:18px;text-decoration:none}
