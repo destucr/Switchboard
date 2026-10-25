@@ -81,12 +81,11 @@ Needs macOS 14+ and Xcode or the Command Line Tools.
 ```sh
 ./build.sh install    # build, copy to /Applications, start
 ./scripts/check.sh    # build with no warnings, then the self-test
-./release.sh minor    # check, bump, tag, publish, update the Homebrew cask (--dry-run first)
 ```
 
 ## Contributing
 
-Versions, the changelog and the release checks are described in [RELEASING.md](RELEASING.md).
+Run `./scripts/check.sh` before you send a change. Versions and the changelog are described in [RELEASING.md](RELEASING.md).
 
 ## License
 
