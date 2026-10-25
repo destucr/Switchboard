@@ -49,6 +49,8 @@ final class Store: ObservableObject {
     private var refreshTick = 0
     @Published var armedKill: String?
     @Published private(set) var usage: [String: Usage] = [:]   // row key → CPU and memory
+    @Published private(set) var icons: [String: NSImage] = [:]   // row key → the page's icon
+    private var iconAttempts = Set<String>()   // server and icon path already tried, so a missing icon is not asked for every 3 seconds
     private var cpuSamples: [Int32: (ns: UInt64, at: Date)] = [:]
     @Published private(set) var editing: InlineEdit?   // the port or name being edited in its row
     @Published private(set) var names: [String: String] = [:]
@@ -76,7 +78,7 @@ final class Store: ObservableObject {
     private var expectedStops: [String: Date] = [:]
 
     /// Fixed sample data, no polling, no disk. Used for README screenshots.
-    init(sample: [PortEntry], stopped: [KnownServer] = [], names: [String: String] = [:], pinned: Set<String> = [], stack: StackMap = .empty, showMap: Bool = false, usage: [String: Usage] = [:]) {
+    init(sample: [PortEntry], stopped: [KnownServer] = [], names: [String: String] = [:], pinned: Set<String> = [], stack: StackMap = .empty, showMap: Bool = false, usage: [String: Usage] = [:], icons: [String: NSImage] = [:]) {
         persistent = false
         showStopped = true
         notifyOnStop = false
@@ -88,6 +90,7 @@ final class Store: ObservableObject {
         self.names = names
         self.pinned = pinned
         self.usage = usage
+        self.icons = icons
     }
 
     init() {
@@ -186,7 +189,25 @@ final class Store: ObservableObject {
         remember(result)
         detectStops(result)
         await sampleUsage(result)
+        fetchIcons(result)
         persist()
+    }
+
+    /// One request per server for its icon, the one the page names or /favicon.ico. A restart or a newly found path tries again.
+    private func fetchIcons(_ list: [PortEntry]) {
+        let alive = Set(list.map(\.key))
+        if icons.keys.contains(where: { !alive.contains($0) }) { icons = icons.filter { alive.contains($0.key) } }
+        if iconAttempts.count > 500 { iconAttempts = [] }
+        for e in list where e.web == .page && e.container == nil && e.kind != .other {
+            let path = e.iconPath ?? "/favicon.ico"
+            guard iconAttempts.insert("\(e.id)|\(path)").inserted else { continue }
+            let (key, port, host) = (e.key, e.port, e.host)
+            Task { [weak self] in
+                let data = await Task.detached(priority: .utility) { Probe.fetchIcon(port: port, host: host, path: path) }.value
+                guard let data, let image = NSImage(data: data), image.isValid else { return }
+                self?.icons[key] = image
+            }
+        }
     }
 
     /// CPU needs two readings, so the first one for a server shows memory only. Containers have no process here and are skipped.

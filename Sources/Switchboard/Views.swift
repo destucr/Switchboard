@@ -391,11 +391,26 @@ struct RowView: View {
         }
     }
 
+    /// The page's own icon, when it has one.
+    @ViewBuilder private var pageIcon: some View {
+        if let image = store.icons[entry.key] {
+            Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                .frame(width: 13, height: 13).clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+    }
+
+    /// What the page calls itself, unless that only repeats the name already shown.
+    private var pageTitleLine: String? {
+        guard entry.web == .page, let t = entry.pageTitle else { return nil }
+        let known = [store.displayName(entry), entry.title].map { $0.lowercased() }
+        return known.contains(t.lowercased()) ? nil : t
+    }
+
     @ViewBuilder private var nameLabel: some View {
         if editingName {
             editor(.name, width: 160, size: 13, weight: .regular) { store.commitName(entry, text: $0) }
         } else {
-            Text(store.displayName(entry)).font(.system(size: 13)).lineLimit(1)
+            Text(store.displayName(entry)).font(.system(size: 13)).lineLimit(1).layoutPriority(2)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { draft = store.names[entry.key] ?? entry.title; store.beginEdit(entry, .name) }
         }
@@ -407,6 +422,7 @@ struct RowView: View {
             portLabel
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
+                    pageIcon
                     nameLabel
                     if store.isRenamed(entry) {
                         Text(entry.title).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
@@ -427,6 +443,9 @@ struct RowView: View {
                 if entry.web != .page {
                     Text(entry.address).font(.system(size: 11)).foregroundStyle(.secondary)
                         .lineLimit(1).fixedSize()
+                }
+                if let t = pageTitleLine {
+                    Text(verbatim: t).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 if let t = tunnels.tunnels[entry.port] { TunnelLine(tunnel: t) }
             }

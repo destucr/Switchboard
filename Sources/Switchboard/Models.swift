@@ -47,6 +47,8 @@ struct PortEntry: Identifiable, Hashable {
     var restart: RestartSpec?
     var status: Int? = nil   // HTTP status of GET /
     var ms: Int? = nil       // response time of GET /
+    var pageTitle: String? = nil   // the page's <title>
+    var iconPath: String? = nil    // where its icon lives on the same server
 
     /// Stable identity across restarts and PID changes.
     var key: String { "\(projectPath ?? container?.name ?? title):\(port)" }

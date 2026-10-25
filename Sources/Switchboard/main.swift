@@ -7,7 +7,7 @@ if let first = CommandLine.arguments.dropFirst().first, CLI.commands.contains(fi
 
 if CommandLine.arguments.contains("--scan") {
     for e in Scanner.scan() {
-        print("\(e.port)\t\(e.kind.rawValue)\t\(e.title)\t[\(e.group)]\tpid=\(e.pid.map(String.init) ?? "-")\tup=\(e.uptime ?? "-")\tweb=\(e.web.rawValue)\tlan=\(e.lanExposed)\troot=\(e.restart.map { String($0.rootPid) } ?? "-")\tmem=\((e.restart?.rootPid ?? e.pid).flatMap { Proc.usage(of: $0) }.map { Usage.memoryText($0.rss) } ?? "-")\t\(e.command.prefix(80))")
+        print("\(e.port)\t\(e.kind.rawValue)\t\(e.title)\t[\(e.group)]\tpid=\(e.pid.map(String.init) ?? "-")\tup=\(e.uptime ?? "-")\tweb=\(e.web.rawValue)\tlan=\(e.lanExposed)\troot=\(e.restart.map { String($0.rootPid) } ?? "-")\ttitle=\(e.pageTitle ?? "-")\ticon=\(e.iconPath ?? "-")\tmem=\((e.restart?.rootPid ?? e.pid).flatMap { Proc.usage(of: $0) }.map { Usage.memoryText($0.rss) } ?? "-")\t\(e.command.prefix(80))")
     }
     exit(0)
 }
@@ -327,6 +327,60 @@ if CommandLine.arguments.contains("--selftest") {
         check("different ports stay separate", Scanner.oneRowPerPort([entry(1, root: 1), { var e = entry(2, root: 2); e.port = 8001; e.projectPath = "/p/api2"; return e }()]).count == 2)
     }
 
+    // Page title and icon: parsed from the head, cleaned, and only read from the same server.
+    check("title is read", Probe.pageInfo("<html><head><title>Acme Dashboard</title></head>").title == "Acme Dashboard")
+    check("title tag is case blind and may have attributes", Probe.pageInfo("<TITLE data-x=\"1\">Shop</TITLE>").title == "Shop")
+    check("title entities and spaces are tidied", Probe.pageInfo("<title>\n  Tom &amp; Jerry\n   &quot;Live&quot;  </title>").title == "Tom & Jerry \"Live\"")
+    check("no title is no title", Probe.pageInfo("<html><head></head>").title == nil && Probe.pageInfo("<title>  </title>").title == nil)
+    check("control characters are removed", Probe.pageInfo("<title>a\u{7}b\u{202E}c</title>").title == "a b c")
+    check("a long title is cut", (Probe.pageInfo("<title>" + String(repeating: "x", count: 200) + "</title>").title?.count ?? 0) == 81)
+    check("icon link is found", Probe.iconHref("<link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" />") == "/vite.svg")
+    check("icon link works with other order and quotes", Probe.iconHref("<link href='/a.png' rel='shortcut icon'>") == "/a.png")
+    check("a plain icon beats a touch icon", Probe.iconHref("<link rel=\"apple-touch-icon\" href=\"/t.png\"><link rel=\"icon\" href=\"/i.png\">") == "/i.png")
+    check("a stylesheet is not an icon", Probe.iconHref("<link rel=\"stylesheet\" href=\"/a.css\">") == nil)
+    check("a relative icon becomes a path", Probe.iconPath("img/f.png", port: 3000) == "/img/f.png" && Probe.iconPath("./f.png", port: 3000) == "/f.png")
+    check("an icon on the same server is kept", Probe.iconPath("http://localhost:3000/f.ico?v=2", port: 3000) == "/f.ico?v=2")
+    check("an icon on another host is ignored", Probe.iconPath("https://cdn.example.com/f.ico", port: 3000) == nil && Probe.iconPath("//cdn.example.com/f.ico", port: 3000) == nil)
+    check("an icon on another local port is ignored", Probe.iconPath("http://localhost:9999/f.ico", port: 3000) == nil)
+    check("odd icon links are ignored", Probe.iconPath("data:image/png;base64,AAAA", port: 3000) == nil && Probe.iconPath("/a b", port: 3000) == nil && Probe.iconPath("file:///etc/passwd", port: 3000) == nil)
+    do {   // a real local server: a page with a title, an icon, and no /favicon.ico
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size); addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1"); addr.sin_port = 0
+        _ = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        listen(fd, 8)
+        var bound = sockaddr_in(); var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafeMutablePointer(to: &bound) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &len) } }
+        let port = Int(UInt16(bigEndian: bound.sin_port))
+        let page = "<!doctype html><html><head><title>Acme &amp; Co</title><link rel=\"icon\" href=\"/logo.png\"></head><body>hi</body></html>"
+        let server = Thread {
+            while true {
+                let c = accept(fd, nil, nil)
+                if c < 0 { break }
+                var buf = [UInt8](repeating: 0, count: 2048)
+                let n = recv(c, &buf, buf.count, 0)
+                let line = n > 0 ? String(decoding: buf.prefix(n), as: UTF8.self).split(separator: "\r\n").first.map(String.init) ?? "" : ""
+                let reply: String
+                if line.hasPrefix("GET / ") { reply = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" + page }
+                else if line.hasPrefix("GET /logo.png ") { reply = "HTTP/1.0 200 OK\r\nContent-Type: image/png\r\n\r\nPNGDATA" }
+                else { reply = "HTTP/1.0 404 Not Found\r\nContent-Type: text/plain\r\n\r\nnope" }
+                _ = reply.withCString { send(c, $0, strlen($0), 0) }
+                close(c)
+            }
+        }
+        server.start()
+        let r = Probe.check(pid: nil, port: port, host: "127.0.0.1")
+        check("a real page gives its title", r.kind == .page && r.title == "Acme & Co")
+        check("a real page gives its icon path", r.icon == "/logo.png")
+        check("the icon is fetched", Probe.fetchIcon(port: port, host: "127.0.0.1", path: "/logo.png") == Data("PNGDATA".utf8))
+        check("a missing icon is nil, not an error page", Probe.fetchIcon(port: port, host: "127.0.0.1", path: "/favicon.ico") == nil)
+        check("the page itself is not taken as an icon", Probe.fetchIcon(port: port, host: "127.0.0.1", path: "/") == nil)
+        close(fd)
+    }
+
     // CPU and memory.
     check("cpu share over two seconds", abs(Usage.cpuPercent(from: 1_000_000_000, to: 2_000_000_000, seconds: 2) - 50) < 0.001)
     check("cpu never goes negative", Usage.cpuPercent(from: 5, to: 1, seconds: 3) == 0 && Usage.cpuPercent(from: 1, to: 9, seconds: 0) == 0)
@@ -590,7 +644,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), CommandLine.arg
                       command: "", projectName: group, projectPath: "/Users/dev/\(group)", group: group, uptime: up,
                       container: nil, web: web, restart: nil, status: ms == nil ? nil : status, ms: ms)
         }
-        let list = [
+        var list = [
             e(5173, "Vite", "storefront", up: "2h 14m", ms: 8),
             e(3000, "Next.js", "dashboard", up: "41m", ms: 31),
             e(3001, "Node.js", "dashboard", up: "41m", lan: true, ms: 12),
@@ -598,6 +652,20 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), CommandLine.arg
             e(5432, "PostgreSQL", "billing-api", .database, up: "3d 2h", web: .none),
             e(6379, "Redis", "billing-api", .database, up: "3d 2h", web: .none),
         ]
+        for (i, t) in [0: "Northwind Store", 1: "Dashboard", 2: "Admin console"] { list[i].pageTitle = t }
+        // Stand-ins for the icons the pages would serve.
+        func favicon(_ letter: String, _ color: NSColor) -> NSImage {
+            NSImage(size: NSSize(width: 32, height: 32), flipped: false) { r in
+                color.setFill(); NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
+                let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 20, weight: .bold), .foregroundColor: NSColor.white]
+                let sz = letter.size(withAttributes: a)
+                letter.draw(at: NSPoint(x: (r.width - sz.width) / 2, y: (r.height - sz.height) / 2), withAttributes: a)
+                return true
+            }
+        }
+        let sampleIcons = [list[0].key: favicon("N", NSColor(red: 0.96, green: 0.45, blue: 0.1, alpha: 1)),
+                           list[1].key: favicon("D", NSColor(red: 0.31, green: 0.27, blue: 0.9, alpha: 1)),
+                           list[2].key: favicon("A", NSColor(red: 0.06, green: 0.6, blue: 0.5, alpha: 1))]
         let stoppedServer = KnownServer(key: "/Users/dev/dashboard:4000", port: 4000, title: "Storybook", group: "dashboard",
                                         projectPath: "/Users/dev/dashboard",
                                         start: KnownStart(exec: "/usr/bin/true", argv: [], cwd: "/tmp"), containerID: nil, lastSeen: Date())
@@ -620,7 +688,8 @@ if let i = CommandLine.arguments.firstIndex(of: "--screenshot"), CommandLine.arg
         let store = Store(sample: list, stopped: [stoppedServer, docs], names: ["/Users/dev/dashboard:3001": "Admin app"],
                           pinned: [], stack: sampleStack, showMap: CommandLine.arguments.contains("map"),
                           usage: Dictionary(uniqueKeysWithValues: zip(list.map(\.key), [(3.0, 142), (91.0, 318), (1.0, 96), (6.0, 214), (0.0, 64), (2.0, 780), (0.0, 38), (4.0, 120)]
-                              .map { Usage(cpu: $0.0, memory: UInt64($0.1) * 1_048_576) })))
+                              .map { Usage(cpu: $0.0, memory: UInt64($0.1) * 1_048_576) })),
+                          icons: sampleIcons)
         if CommandLine.arguments.contains("logs") {
             let t = LogTail(source: .file("/Users/dev/billing-api/storage/logs/laravel.log"), title: "Laravel :8000", key: list[3].key)
             t.preload("""

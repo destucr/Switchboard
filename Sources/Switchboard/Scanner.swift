@@ -86,6 +86,8 @@ enum Scanner {
             entries[j.0].web = results[n].kind
             entries[j.0].status = results[n].status
             entries[j.0].ms = results[n].ms
+            entries[j.0].pageTitle = results[n].title
+            entries[j.0].iconPath = results[n].icon
         }
     }
 

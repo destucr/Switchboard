@@ -12,9 +12,12 @@ struct ProbeResult {
     var kind: WebKind
     var status: Int?
     var ms: Int?
+    var title: String? = nil   // the page's <title>
+    var icon: String? = nil    // where its icon lives on this server, like /favicon.svg
 }
 
 enum Probe {
+    private static let pageReadLimit = 16_384
     private static let lock = NSLock()
     private static var cache: [String: (result: ProbeResult, at: Date)] = [:]
 
@@ -44,20 +47,120 @@ enum Probe {
             guard send(fd, req, req.utf8.count, 0) > 0 else { return ProbeResult(kind: .none, status: nil, ms: nil) }
 
             var data = Data()
-            var buf = [UInt8](repeating: 0, count: 2048)
+            var buf = [UInt8](repeating: 0, count: 4096)
             var firstByte: DispatchTime?
-            while data.count < 2048 {
+            var headerDone = false, isPage = false
+            // Headers are enough for an API. A page is read until the end of its <head>, so the title and icon are in view.
+            while data.count < Self.pageReadLimit {
                 let n = recv(fd, &buf, buf.count, 0)
                 if n <= 0 { break }
                 if firstByte == nil { firstByte = .now() }
                 data.append(buf, count: n)
-                if data.count > 12, data.range(of: Data("\r\n\r\n".utf8)) != nil { break }
+                if !headerDone, data.range(of: Data("\r\n\r\n".utf8)) != nil {
+                    headerDone = true
+                    isPage = classify(String(decoding: data, as: UTF8.self)).0 == .page
+                }
+                if headerDone && !isPage { break }
+                if headerDone && String(decoding: data, as: UTF8.self).lowercased().contains("</head>") { break }
             }
-            let (kind, status) = classify(String(decoding: data, as: UTF8.self))
+            let text = String(decoding: data, as: UTF8.self)
+            let (kind, status) = classify(text)
             let ms = firstByte.map { Int(($0.uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000) }
-            return ProbeResult(kind: kind, status: status, ms: kind == .none ? nil : ms)
+            var r = ProbeResult(kind: kind, status: status, ms: kind == .none ? nil : ms)
+            if kind == .page, let split = text.range(of: "\r\n\r\n") {
+                let info = pageInfo(String(text[split.upperBound...]))
+                r.title = info.title
+                r.icon = info.icon.flatMap { iconPath($0, port: port) }
+            }
+            return r
         }
         return ProbeResult(kind: .none, status: nil, ms: nil)
+    }
+
+    // MARK: Page details
+
+    /// The page's title and the icon it points to. The text comes from a local server, so it is cleaned before anyone sees it.
+    static func pageInfo(_ html: String) -> (title: String?, icon: String?) {
+        var title: String?
+        if let m = try? NSRegularExpression(pattern: "<title[^>]*>(.*?)</title>", options: [.caseInsensitive, .dotMatchesLineSeparators]),
+           let r = m.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)), let range = Range(r.range(at: 1), in: html) {
+            title = cleanTitle(String(html[range]))
+        }
+        return (title, iconHref(html))
+    }
+
+    static func cleanTitle(_ raw: String) -> String? {
+        var t = raw
+        for (entity, ch) in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"), ("&nbsp;", " ")] {
+            t = t.replacingOccurrences(of: entity, with: ch)
+        }
+        t = t.unicodeScalars.map { $0.properties.generalCategory == .control || $0.properties.generalCategory == .format ? " " : String($0) }.joined()
+        t = t.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        if t.count > 80 { t = String(t.prefix(80)) + "…" }
+        return t.isEmpty ? nil : t
+    }
+
+    /// The href of the best <link rel="icon">. A plain icon beats an Apple touch icon.
+    static func iconHref(_ html: String) -> String? {
+        guard let tags = try? NSRegularExpression(pattern: "<link\\b[^>]*>", options: .caseInsensitive),
+              let attr = try? NSRegularExpression(pattern: "([a-zA-Z-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))") else { return nil }
+        var best: (rank: Int, href: String)?
+        for m in tags.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+            guard let tr = Range(m.range, in: html) else { continue }
+            let tag = String(html[tr])
+            var rel = "", href = ""
+            for a in attr.matches(in: tag, range: NSRange(tag.startIndex..., in: tag)) {
+                guard let nr = Range(a.range(at: 1), in: tag) else { continue }
+                let value = (2...4).compactMap { Range(a.range(at: $0), in: tag).map { String(tag[$0]) } }.first ?? ""
+                switch tag[nr].lowercased() { case "rel": rel = value.lowercased(); case "href": href = value; default: break }
+            }
+            let words = rel.split(separator: " ").map(String.init)
+            guard !href.isEmpty, words.contains(where: { $0.hasSuffix("icon") }), !words.contains("mask-icon") else { continue }
+            let rank = words.contains("icon") ? 0 : 1
+            if best == nil || rank < best!.rank { best = (rank, href) }
+        }
+        return best?.href
+    }
+
+    /// A path on this same server, or nil. Icons on other hosts are ignored, so a page can't make Switchboard call out.
+    static func iconPath(_ href: String, port: Int) -> String? {
+        let h = href.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !h.isEmpty, h.count <= 512, !h.hasPrefix("data:"), !h.hasPrefix("//"),
+              h.unicodeScalars.allSatisfy({ $0.value > 32 && $0.value < 127 }) else { return nil }
+        if h.hasPrefix("http://") || h.hasPrefix("https://") {
+            guard let u = URL(string: h), let host = u.host?.lowercased(), ["localhost", "127.0.0.1", "::1"].contains(host),
+                  (u.port ?? (h.hasPrefix("https") ? 443 : 80)) == port else { return nil }
+            let path = u.path.isEmpty ? "/" : u.path
+            return u.query.map { path + "?" + $0 } ?? path
+        }
+        if h.contains("://") { return nil }
+        return h.hasPrefix("/") ? h : "/" + (h.hasPrefix("./") ? String(h.dropFirst(2)) : h)
+    }
+
+    /// An icon file from this server, or nil. Only a plain 200 under 256 KB that is not a page counts.
+    static func fetchIcon(port: Int, host: String, path: String) -> Data? {
+        guard port != 443, port != 8443, path.hasPrefix("/") else { return nil }
+        let order = host.contains("::1") ? [true, false] : [false, true]
+        for v6 in order {
+            guard let fd = connectLoopback(port: port, v6: v6) else { continue }
+            defer { close(fd) }
+            let req = "GET \(path) HTTP/1.0\r\nHost: localhost:\(port)\r\nAccept: image/*\r\nUser-Agent: Switchboard\r\nConnection: close\r\n\r\n"
+            guard send(fd, req, req.utf8.count, 0) > 0 else { return nil }
+            var data = Data()
+            var buf = [UInt8](repeating: 0, count: 16_384)
+            while data.count <= 262_144 + 4096 {
+                let n = recv(fd, &buf, buf.count, 0)
+                if n <= 0 { break }
+                data.append(buf, count: n)
+            }
+            guard let split = data.range(of: Data("\r\n\r\n".utf8)) else { return nil }
+            let head = String(decoding: data[..<split.lowerBound], as: UTF8.self).lowercased()
+            let body = data[split.upperBound...]
+            guard head.hasPrefix("http/"), head.split(separator: " ").dropFirst().first == "200", !body.isEmpty, body.count <= 262_144,
+                  !head.contains("content-type: text/html") else { return nil }
+            return Data(body)
+        }
+        return nil
     }
 
     static func classify(_ response: String) -> (WebKind, Int?) {
