@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.2] - 2026-10-25
+
 ### Fixed
 - Stop used to leave a worker process holding the port when a server had several processes sharing it, like uvicorn or gunicorn with workers. The row stayed green and Stop had to be pressed again. Stop, Restart and Change port now take the whole family of processes.
 - If something still listens on the port after Stop, Switchboard says so instead of reporting "Stopped".
