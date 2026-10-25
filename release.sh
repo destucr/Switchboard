@@ -72,7 +72,10 @@ SHA="$(shasum -a 256 "build/Switchboard-$V.zip" | cut -d' ' -f1)"
 CASK="Casks/switchboard.rb"
 CUR="$(gh api "repos/destucr/homebrew-tap/contents/$CASK")"
 FILE_SHA="$(printf '%s' "$CUR" | jq -r .sha)"
-NEW="$(printf '%s' "$CUR" | jq -r .content | base64 -d | awk '/binary "/ {found=1} {print} /^  app "Switchboard.app"/ && !found {print "  binary \"#{appdir}/Switchboard.app/Contents/MacOS/Switchboard\", target: \"switchboard\""}' | sed -E "s/^(  version \").*(\")/\1$V\2/; s/^(  sha256 \").*(\")/\1$SHA\2/")"
+OLD="$(printf '%s' "$CUR" | jq -r .content | base64 -d)"
+HAS_BIN="$(printf '%s\n' "$OLD" | grep -c '^  binary "' || true)"
+# One binary line: add it if the cask has none, and drop any repeats.
+NEW="$(printf '%s\n' "$OLD" | awk -v has="$HAS_BIN" '/^  binary "/ { if (seen++) next } {print} /^  app "Switchboard.app"/ && has == 0 {print "  binary \"#{appdir}/Switchboard.app/Contents/MacOS/Switchboard\", target: \"switchboard\""}' | sed -E "s/^(  version \").*(\")/\1$V\2/; s/^(  sha256 \").*(\")/\1$SHA\2/")"
 gh api -X PUT "repos/destucr/homebrew-tap/contents/$CASK" -f message="switchboard $V" \
   -f content="$(printf '%s\n' "$NEW" | base64)" -f sha="$FILE_SHA" -f branch=main --jq .commit.html_url
 echo "Released v$V"
@@ -81,4 +84,6 @@ echo "Released v$V"
 gh release view "v$V" --json assets --jq '.assets[].name' | grep -q "Switchboard-$V.zip" || { echo "WARNING: release asset missing."; exit 1; }
 TAPV="$(gh api "repos/destucr/homebrew-tap/contents/$CASK" --jq .content | base64 -d | sed -n 's/^  version "\(.*\)"/\1/p')"
 [[ "$TAPV" == "$V" ]] || { echo "WARNING: the cask says $TAPV, not $V."; exit 1; }
+BINS="$(gh api "repos/destucr/homebrew-tap/contents/$CASK" --jq .content | base64 -d | grep -c '^  binary "' || true)"
+[[ "$BINS" == "1" ]] || { echo "WARNING: the cask has $BINS binary lines, expected 1."; exit 1; }
 echo "Verified: release and cask are both $V"
