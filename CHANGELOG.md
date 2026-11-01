@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.5] - 2026-11-02
+
 ### Fixed
 - A restarted server could leave its old row on screen until you switched to the map and back. Rows are now matched by project and port, not by process id.
 
