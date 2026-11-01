@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.4] - 2026-11-01
+
 ### Fixed
 - Programs that only inherit another program's port are no longer listed as servers. A terminal app that runs short `zsh` helpers in your project folders used to show up as a "zsh" server. Old entries like it are removed at launch.
 - The running and stopped state in the list could stay wrong until you switched to the map and back. A stopped row no longer shares an id with its running row, rows only animate while the popover is open, and the running and stopped lists now update together.
