@@ -105,7 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         TipWindow.shared.hide()
-        MainActor.assumeIsolated { store.cancelEdit() }
+        MainActor.assumeIsolated { store.popoverOpen = false; store.cancelEdit() }
         if let m = outsideClick { NSEvent.removeMonitor(m); outsideClick = nil }
         MainActor.assumeIsolated { store.logs?.stop() }   // nothing reads the file while the popover is hidden
     }
@@ -125,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
+        store.popoverOpen = true
         store.logs?.start()
         // A global monitor only sees clicks that go to other apps, so clicking inside Switchboard or on its dialogs is unaffected.
         if outsideClick == nil {

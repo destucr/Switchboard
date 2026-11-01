@@ -179,6 +179,9 @@ final class Store: ObservableObject {
     // MARK: Refresh
 
     private var refreshing = false
+    /// Set by the menu bar while the popover is on screen. Rows are only animated then: a fade that never gets to run in a hidden window can leave an old row behind.
+    var popoverOpen = false
+    private func animated(_ change: () -> Void) { if popoverOpen { withAnimation(Motion.anim, change) } else { change() } }
     private var lastPidCheck = Date.distantPast
 
     func refresh() async {
@@ -190,14 +193,13 @@ final class Store: ObservableObject {
         let after = Set(result.filter { $0.kind != .other }.map(\.key))
         for gone in before.subtracting(after) { noteStopped(gone) }
         let expired = justStopped.filter { after.contains($0.key) || Date().timeIntervalSince($0.value) > 60 }.map(\.key)
-        if !expired.isEmpty { withAnimation(Motion.anim) { for k in expired { justStopped[k] = nil } } }
-        if result != entries { withAnimation(Motion.anim) { entries = result } }
+        if !expired.isEmpty { animated { for k in expired { justStopped[k] = nil } } }
+        if result != entries { animated { entries = result } }
         if let s = selectedKey, !navKeys.contains(s) { selectedKey = nil }
         if let ed = editing, !result.contains(where: { $0.key == ed.key }) || busy[ed.key] != nil { editing = nil }   // the server went away or got busy
         guard persistent else { return }
         refreshTick += 1
         if refreshTick % 20 == 0 { checkUpdate(force: false) }   // the app can run for days, so ask again while it runs
-        if refreshTick % 4 == 1 { await refreshMux() }
         if showMap || (refreshTick % 5 == 0 && result.filter({ $0.kind != .other }).count >= 2) {
             let map = await Task.detached(priority: .utility) { Scanner.stack(entries: result) }.value
             if showMap { withAnimation(Motion.pop) { stack = map } }
@@ -209,6 +211,7 @@ final class Store: ObservableObject {
         await sampleUsage(result)
         fetchIcons(result)
         persist()
+        if refreshTick % 4 == 1 { await refreshMux() }   // last, so a slow terminal lookup never delays the running and stopped lists
     }
 
     /// One request per server for its icon, the one the page names or /favicon.ico. A restart or a newly found path tries again.
@@ -334,7 +337,7 @@ final class Store: ObservableObject {
         syncDeclared(roots: Set(projects).union(known.values.compactMap(\.projectPath)).union(list.compactMap(\.projectPath)))
         let s = Self.merge(known: known, declared: declared, running: runningKeys)
             .sorted { ($0.group.lowercased(), $0.port) < ($1.group.lowercased(), $1.port) }
-        if s != stopped { withAnimation(Motion.anim) { stopped = s } }
+        if s != stopped { animated { stopped = s } }
     }
 
     /// What we know about a server while it is alive, so we can explain it once it is gone.
@@ -394,7 +397,8 @@ final class Store: ObservableObject {
 
     private func load() {
         guard let data = try? Data(contentsOf: stateURL), let s = try? JSONDecoder().decode(SavedState.self, from: data) else { return }
-        known = s.known; names = s.names; pinned = s.pinned
+        known = s.known.filter { !Scanner.isShell($0.value.start?.exec ?? "") }   // helpers that earlier versions saved as servers
+        names = s.names; pinned = s.pinned
     }
 
     private func persist(force: Bool = false) {

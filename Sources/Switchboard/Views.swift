@@ -109,7 +109,7 @@ struct RootView: View {
                             ForEach(store.groups) { g in
                                 Section {
                                     ForEach(g.running) { RowView(entry: $0).id($0.key).transition(.rowIn) }
-                                    ForEach(g.stopped) { StoppedRow(server: $0).id($0.key).transition(.stoppedIn) }
+                                    ForEach(g.stopped) { StoppedRow(server: $0).id("stopped:\($0.key)").transition(.stoppedIn) }
                                 } header: {
                                     GroupHeader(group: g)
                                 }
@@ -154,7 +154,7 @@ struct RootView: View {
             filterFocused = true
         }
         .onChange(of: store.selectedKey) { _, k in
-            if let k { withAnimation(Motion.anim) { proxy.scrollTo(k, anchor: .center) } }
+            if let k { withAnimation(Motion.anim) { proxy.scrollTo(store.entries.contains { $0.key == k } ? k : "stopped:\(k)", anchor: .center) } }
         }
         }
     }

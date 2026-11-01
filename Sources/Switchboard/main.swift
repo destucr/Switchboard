@@ -327,6 +327,13 @@ if CommandLine.arguments.contains("--selftest") {
         check("different ports stay separate", Scanner.oneRowPerPort([entry(1, root: 1), { var e = entry(2, root: 2); e.port = 8001; e.projectPath = "/p/api2"; return e }()]).count == 2)
     }
 
+    // A child that inherited its parent's listening socket, and a shell holding a port, are not servers.
+    check("a child sharing its parent's socket is skipped", Scanner.inheritsSocket(parent: 500, port: 9277, owners: ["500:9277", "501:9277"]))
+    check("a child with its own port stays", !Scanner.inheritsSocket(parent: 500, port: 9278, owners: ["500:9277"]))
+    check("a parent that does not listen does not hide the child", !Scanner.inheritsSocket(parent: 1, port: 80, owners: ["1:80"]))
+    check("zsh is a shell", Scanner.isShell("/bin/zsh -f -c git status") && Scanner.isShell("-zsh") && Scanner.isShell("bash"))
+    check("python is not a shell", !Scanner.isShell("/usr/bin/python3 -m http.server") && !Scanner.isShell("shiny"))
+
     // Page title and icon: parsed from the head, cleaned, and only read from the same server.
     check("title is read", Probe.pageInfo("<html><head><title>Acme Dashboard</title></head>").title == "Acme Dashboard")
     check("title tag is case blind and may have attributes", Probe.pageInfo("<TITLE data-x=\"1\">Shop</TITLE>").title == "Shop")

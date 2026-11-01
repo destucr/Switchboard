@@ -12,10 +12,12 @@ enum Scanner {
         var entries: [PortEntry] = []
         var seen = Set<String>()
         var infoCache: [Int32: PortEntry] = [:]
+        let owners = Set(listeners.map { "\($0.pid):\($0.port)" })
 
         for l in listeners {
             let key = "\(l.pid):\(l.port)"
             guard seen.insert(key).inserted else { continue }
+            if inheritsSocket(parent: Proc.bsd(l.pid).map { Int32($0.pbi_ppid) }, port: l.port, owners: owners) { continue }
             let base: PortEntry
             if let cached = infoCache[l.pid] {
                 base = cached
@@ -23,6 +25,7 @@ enum Scanner {
                 base = describe(pid: l.pid, now: now)
                 infoCache[l.pid] = base
             }
+            if isShell(base.command) { continue }
             var e = base
             e.id = key
             e.port = l.port
@@ -53,6 +56,20 @@ enum Scanner {
 
         probeWebKinds(&entries)
         return entries.sorted { ($0.group.lowercased(), $0.port) < ($1.group.lowercased(), $1.port) }
+    }
+
+    /// A child that inherited its parent's listening socket is not a server of its own. A terminal app, for example,
+    /// runs short `zsh` helpers in your project folders, and each one briefly shows up as a listener on the app's port.
+    static func inheritsSocket(parent: Int32?, port: Int, owners: Set<String>) -> Bool {
+        guard let parent, parent > 1 else { return false }
+        return owners.contains("\(parent):\(port)")
+    }
+
+    /// A shell never serves anything. If it holds a port, it only got it from the program that started it.
+    static func isShell(_ command: String) -> Bool {
+        let first = command.split(separator: " ").first.map(String.init) ?? command
+        let name = first.split(separator: "/").last.map(String.init) ?? first
+        return ["zsh", "bash", "sh", "dash", "fish", "ksh", "tcsh"].contains(name.hasPrefix("-") ? String(name.dropFirst()) : name)
     }
 
     /// Two processes can hold the same listening socket, for example a uvicorn parent and the worker it forked.
