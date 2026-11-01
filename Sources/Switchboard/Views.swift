@@ -108,8 +108,8 @@ struct RootView: View {
                         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                             ForEach(store.groups) { g in
                                 Section {
-                                    ForEach(g.running) { RowView(entry: $0).id($0.key).transition(.rowIn) }
-                                    ForEach(g.stopped) { StoppedRow(server: $0).id("stopped:\($0.key)").transition(.stoppedIn) }
+                                    ForEach(g.running, id: \.key) { RowView(entry: $0).id($0.key).transition(.rowIn) }
+                                    ForEach(g.stopped, id: \.key) { StoppedRow(server: $0).id("stopped:\($0.key)").transition(.stoppedIn) }
                                 } header: {
                                     GroupHeader(group: g)
                                 }
