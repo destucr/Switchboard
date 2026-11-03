@@ -4,6 +4,8 @@ All notable changes to Switchboard. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [1.12.6] - 2026-11-03
+
 ### Fixed
 - Colima and Lima's port forwarders (`ssh … [mux]` and `limactl`) are no longer listed as servers. They hold a container's port on the Mac, and when Colima was started from a project folder they showed up as a dev server of that project, giving a second "running" row on the same port as the real container.
 
