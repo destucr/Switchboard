@@ -333,6 +333,11 @@ if CommandLine.arguments.contains("--selftest") {
     check("a parent that does not listen does not hide the child", !Scanner.inheritsSocket(parent: 1, port: 80, owners: ["1:80"]))
     check("zsh is a shell", Scanner.isShell("/bin/zsh -f -c git status") && Scanner.isShell("-zsh") && Scanner.isShell("bash"))
     check("python is not a shell", !Scanner.isShell("/usr/bin/python3 -m http.server") && !Scanner.isShell("shiny"))
+    check("Colima's ssh and limactl forwarders are plumbing", Scanner.isVMForwarder("ssh: ~/.colima/_lima/colima/ssh.sock [mux]")
+        && Scanner.isVMForwarder("/opt/homebrew/bin/limactl hostagent --pidfile ~/.colima/_lima/colima/ha.pid colima")
+        && Scanner.isVMForwarder("limactl usernet -p ~/.lima/_networks/user-v2/usernet_user-v2.pid"))
+    check("a normal dev server is not a VM forwarder", !Scanner.isVMForwarder("node ~/Projects/app/node_modules/.bin/vite")
+        && !Scanner.isVMForwarder("/usr/bin/ssh -L 5432:db:5432 host") && !Scanner.isVMForwarder("docker gtfs_backend"))
 
     // Page title and icon: parsed from the head, cleaned, and only read from the same server.
     check("title is read", Probe.pageInfo("<html><head><title>Acme Dashboard</title></head>").title == "Acme Dashboard")

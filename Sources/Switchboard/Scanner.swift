@@ -26,6 +26,7 @@ enum Scanner {
                 infoCache[l.pid] = base
             }
             if isShell(base.command) { continue }
+            if isVMForwarder(base.command) { continue }
             var e = base
             e.id = key
             e.port = l.port
@@ -70,6 +71,14 @@ enum Scanner {
         let first = command.split(separator: " ").first.map(String.init) ?? command
         let name = first.split(separator: "/").last.map(String.init) ?? first
         return ["zsh", "bash", "sh", "dash", "fish", "ksh", "tcsh"].contains(name.hasPrefix("-") ? String(name.dropFirst()) : name)
+    }
+
+    /// Colima and Lima run Docker inside a VM and forward its ports to the Mac with their own `ssh` and `limactl` processes.
+    /// Those hold the host port on behalf of a container; they are plumbing, not servers. When Colima is started from a project
+    /// folder they also inherit that folder, so without this they showed up as a dev server of that project, next to the real
+    /// container row on the same port.
+    static func isVMForwarder(_ command: String) -> Bool {
+        ["/.colima/", "/.lima/", "/_lima/"].contains { command.contains($0) }
     }
 
     /// Two processes can hold the same listening socket, for example a uvicorn parent and the worker it forked.
